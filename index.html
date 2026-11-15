@@ -99,6 +99,7 @@ label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--m
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:6px;z-index:50;max-width:90vw;font-weight:500}
 .win{font-family:var(--f-display);font-size:44px;text-transform:uppercase;letter-spacing:.06em;line-height:1}
 .hint{font-size:13px;color:var(--mute)}
+.chk{flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:13px}.ab.sel{border-color:var(--role)}
 .pill{font-family:var(--f-mono);font-size:11px;border-radius:3px;padding:1px 6px;border:1px solid var(--line);color:var(--mute);text-transform:uppercase}
 .pill.warn{border-color:var(--warn);color:var(--warn)}
 @media(prefers-reduced-motion:no-preference){.btn{transition:transform .08s}.btn:active:not(:disabled){transform:translateY(1px)}}
@@ -219,7 +220,8 @@ const SAMPLE=[
 
 const STOP=new Set(("i a an the and of in to is it he she they them we us you your my me was were be been for with as at by from on or but not that this which who whom so if into out up down "+
 "his her him our their thou thee thy thine ye hath unto shall shalt will have has had are am do did then than there these those also yet").split(" "));
-const PASSIVE_MS=5*60*1000, COOLDOWN_MS=5*60*1000, OFFLINE_MS=5*60*1000, EXTRACT_MS=120*1000, FL_MS=5*60*1000;
+const COOLDOWN_MS=5*60*1000, WRONG_MS=10*60*1000, OFFLINE_MS=5*60*1000, ANSWER_MS=120*1000, FL_MS=5*60*1000, CHAL_MS=5*60*1000, LOCK_MS=3*60*1000, RULE_MS=60*1000;
+const HAND_LIMIT=6, START_HAND=3;
 class GameError extends Error{}
 const GE=m=>new GameError(m);
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -229,83 +231,134 @@ function tokens(text){return (normQ(text).match(/[A-Za-z0-9']+(?:-[A-Za-z0-9']+)
 function wordCount(text){return normQ(text).split(/\s+/).filter(w=>/[A-Za-z0-9]/.test(w)).length}
 function isEligible(w){const k=normQ(w).toLowerCase().replace(/^'+|'+$/g,"");return k.length>=2&&!STOP.has(k)&&!/^[0-9]+$/.test(k)}
 function eligibleWords(text){const seen=new Set(),out=[];for(const t of tokens(text)){const k=t.toLowerCase();if(isEligible(t)&&!seen.has(k)){seen.add(k);out.push(t)}}return out}
-function defaultWord(text){const el=eligibleWords(text);if(el.length)return el[Math.floor(Math.random()*el.length)];
-  return tokens(text).sort((a,b)=>b.length-a.length)[0]||""}
+// Default fallback word is deterministic: the longest eligible content word (first one wins a tie).
+function defaultWord(text){const el=eligibleWords(text);const pool=el.length?el:tokens(text);let best="";for(const w of pool)if(w.length>best.length)best=w;return best}
 function containsWord(text,w){const k=normQ(w).toLowerCase().trim();if(!k)return false;
   for(const t of tokens(text)){const l=t.toLowerCase();if(l===k)return true;if(l.includes("-")&&l.split("-").includes(k))return true}return false}
-function pick(a){return a[Math.floor(Math.random()*a.length)]}
+// Shuffle is used only to set the order of the Hider deck and of the False Lead choices. There are no dice or roll checks.
 function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
-function scrambleWord(w){if(w.length<3)return w;let o=w;for(let i=0;i<6&&o===w;i++)o=shuffle(w.split("")).join("");return o}
+function scrambleWord(w){if(w.length<3)return w;let o=w[0]+w.slice(1).split("").reverse().join("");if(o===w)o=w.slice(1)+w[0];return o}
 const fmt=ms=>{ms=Math.max(0,Math.ceil(ms/1000));return Math.floor(ms/60)+":"+String(ms%60).padStart(2,"0")};
 
 function tier(d){return d<=3?0:d<=10?1:2}
 const TIERS=["HOT","WARM","COLD"];
+// draw = how many cards the Hider draws when answering. Book-level answers draw 1, verse-level or wider draw 2, precision scans draw 3.
 const HUNTER_ABILITIES=[
- {k:"canon",name:"Canon Split",cost:10,tag:"book",d:"Reveals Old Testament or New Testament."},
- {k:"division",name:"Division Sweep",cost:10,tag:"book",d:"Reveals the literary division of the book."},
- {k:"threshold",name:"Chapter Threshold",cost:10,tag:"book",d:"Book has 20 or more chapters, or fewer."},
- {k:"proximity",name:"Proximity Ping",cost:20,tag:"book",input:"book",d:"Pick a book. Hot within 3 books, Warm within 10, Cold beyond."},
- {k:"author",name:"Attribution Check",cost:20,tag:"book",d:"Reveals the traditional author of the book."},
- {k:"tally",name:"Word Tally",cost:20,tag:"verse",d:"Exact word count of the verse."},
- {k:"extract",name:"Word Extract",cost:25,tag:"verse",d:"One content word, chosen by the Hider (filler words are never sent)."},
- {k:"term",name:"Term Sweep",cost:35,tag:"verse",input:"word",precision:true,d:"Enter one word. Yes or No: is it in the verse?"},
- {k:"sector",name:"Sector Lock",cost:35,tag:"chapter",precision:true,d:"Narrows the verse to a 5-chapter block."}
+ {k:"canon",name:"Canon Split",draw:1,tag:"book",d:"Reveals Old Testament or New Testament."},
+ {k:"division",name:"Division Sweep",draw:1,tag:"book",d:"Reveals the literary division of the book."},
+ {k:"threshold",name:"Chapter Threshold",draw:1,tag:"book",d:"Book has 20 or more chapters, or fewer."},
+ {k:"scroll",name:"Scroll Length",draw:1,tag:"book",d:"Short (under 10 chapters), Medium (10 to 29) or Long (30 or more)."},
+ {k:"proximity",name:"Proximity Ping",draw:2,tag:"book",input:"book",d:"Pick a book. Hot within 3 books, Warm within 10, Cold beyond."},
+ {k:"author",name:"Attribution Check",draw:2,tag:"book",d:"Reveals the traditional author of the book."},
+ {k:"tally",name:"Word Tally",draw:2,tag:"verse",d:"Exact word count of the verse."},
+ {k:"extract",name:"Word Extract",draw:2,tag:"verse",d:"One content word, chosen by the Hider (filler words are never sent)."},
+ {k:"term",name:"Term Sweep",draw:3,tag:"verse",input:"word",precision:true,d:"Enter one word. Yes or No: is it in the verse?"},
+ {k:"sector",name:"Sector Lock",draw:3,tag:"chapter",precision:true,d:"Narrows the verse to a 5-chapter block."}
 ];
 function compute(k,S,input,scr){
   const v=S.verse,b=BOOK(v.book);
   switch(k){
    case "canon":{const ot=scr?!b.ot:b.ot;return "Target is in the "+(ot?"Old":"New")+" Testament."}
-   case "division":{const d=scr?pick(DIVISIONS.filter(x=>x!==b.div)):b.div;return "Division: "+d+"."}
+   case "division":{const i=DIVISIONS.indexOf(b.div);return "Division: "+(scr?DIVISIONS[(i+1)%DIVISIONS.length]:b.div)+"."}
    case "threshold":{const big=scr?!(b.ch>=20):b.ch>=20;return big?"The book has 20 or more chapters.":"The book has fewer than 20 chapters."}
-   case "proximity":{const pb=BOOK(input);let t=tier(Math.abs(pb.i-b.i));if(scr)t=t===0?1:t===2?1:pick([0,2]);return pb.name+": "+TIERS[t]+"."}
-   case "author":{const a=scr?pick(BOOKS.map(x=>x.author).filter(x=>x!==b.author)):b.author;return "Traditional author: "+a+"."}
-   case "tally":{let n=wordCount(v.text);if(scr)n=Math.max(1,n+pick([-3,-2,-1,1,2,3]));return "The verse has "+n+" words."}
+   case "scroll":{let L=b.ch<10?"Short":b.ch<30?"Medium":"Long";if(scr)L={Short:"Medium",Medium:"Long",Long:"Medium"}[L];
+     return "Scroll length: "+L+" ("+{Short:"under 10 chapters",Medium:"10 to 29 chapters",Long:"30 or more chapters"}[L]+")."}
+   case "proximity":{const pb=BOOK(input);let t=tier(Math.abs(pb.i-b.i));if(scr)t=t===0?1:t===1?2:1;return pb.name+": "+TIERS[t]+"."}
+   case "author":{let a=b.author;if(scr){for(let n=1;n<BOOKS.length;n++){const x=BOOKS[(b.i+n)%BOOKS.length].author;if(x!==a){a=x;break}}}return "Traditional author: "+a+"."}
+   case "tally":{let n=wordCount(v.text);if(scr)n=n+1;return "The verse has "+n+" words."}
    case "term":{let yes=containsWord(v.text,input);if(scr)yes=!yes;return "“"+input+"”: "+(yes?"YES":"NO")+"."}
    case "sector":{const blocks=Math.ceil(b.ch/5);let bl=Math.ceil(v.ch/5);if(scr&&blocks>1)bl=bl>1?bl-1:bl+1;
      const a=(bl-1)*5+1,e=Math.min(bl*5,b.ch);return a===e?"Chapter "+a+".":"Chapters "+a+"–"+e+"."}
   }
 }
 function addLog(S,o){S.log.unshift(Object.assign({id:Math.random().toString(36).slice(2,9),t:Date.now()},o));if(S.log.length>200)S.log.length=200}
-function accrue(S,now){
-  if(S.status!=="playing")return;
-  const n=Math.floor((now-S.apAnchor)/PASSIVE_MS);
-  if(n>0){S.hiderAP+=5*n;S.apAnchor+=n*PASSIVE_MS}
+
+/* ---------- Hider cards ---------- */
+const CARDS=[
+ {k:"fauna",name:"Fauna Call",cost:0,copies:3,d:"Pick a Bible animal. Hunters must type a verse reference featuring it before they can investigate again."},
+ {k:"era",name:"Era Check",cost:0,copies:3,d:"Pick a Bible era. Hunters must type a verse reference from that era before they can investigate again."},
+ {k:"symbol",name:"Symbol Check",cost:0,copies:3,d:"Pick a recurring Bible object. Hunters must type a verse reference mentioning it before they can investigate again."},
+ {k:"override",name:"Inquiry Override",cost:1,copies:2,d:"Needs a waiting investigation. Cancels it and locks that investigation for 3 minutes. No cards are drawn."},
+ {k:"reroll",name:"Scan Reroll",cost:0,copies:3,d:"Needs a waiting investigation. Swap it for a different one from the same tier, then answer that one."},
+ {k:"scramble",name:"Signal Scramble",cost:0,copies:3,d:"Corrupts one detail in the next scan result."},
+ {k:"offline",name:"Offline Protocol",cost:1,copies:2,d:"Locks the Hunters’ verse lookup and keyword search tools for 5 minutes."},
+ {k:"falselead",name:"False Lead",cost:1,copies:2,d:"Sends two decoy verses alongside yours. Blocks Term Sweep and Sector Lock until Hunters rule out a decoy."},
+ {k:"shift",name:"Position Shift",cost:2,copies:1,d:"Move the target to another verse in the same book. Once per round. Voids chapter and verse clues."}
+];
+const FAUNA={
+ Dove:{kw:["dove","doves"],refs:["Genesis 8:8-12","Matthew 3:16","Mark 1:10","Luke 3:22","John 1:32","Matthew 10:16","Psalms 55:6","Song of Solomon 2:14","Matthew 21:12"]},
+ Lion:{kw:["lion","lions"],refs:["Daniel 6:16","Daniel 6:22","Daniel 6:27","Judges 14:5-6","1 Samuel 17:34","1 Samuel 17:36-37","1 Peter 5:8","Revelation 5:5","Isaiah 11:6-7","2 Timothy 4:17","Hebrews 11:33"]},
+ Lamb:{kw:["lamb","lambs"],refs:["John 1:29","John 1:36","Isaiah 53:7","Exodus 12:3","Exodus 12:5","Genesis 22:7-8","Revelation 5:6","Revelation 5:12","1 Peter 1:19","John 21:15","Luke 10:3"]},
+ Raven:{kw:["raven","ravens"],refs:["Genesis 8:7","1 Kings 17:4","1 Kings 17:6","Job 38:41","Luke 12:24","Psalms 147:9","Leviticus 11:15","Song of Solomon 5:11"]},
+ Donkey:{kw:["donkey","donkeys","ass","asses"],refs:["Numbers 22:21","Numbers 22:23","Numbers 22:28","Matthew 21:2","Matthew 21:5","Matthew 21:7","John 12:14-15","Zechariah 9:9","Judges 15:15","Luke 14:5","Genesis 22:3","2 Peter 2:16"]},
+ Serpent:{kw:["serpent","serpents"],refs:["Genesis 3:1","Genesis 3:4","Genesis 3:13-14","Numbers 21:6","Numbers 21:8-9","John 3:14","Exodus 4:3","Exodus 7:12","Matthew 10:16","Revelation 12:9","Revelation 20:2","2 Corinthians 11:3"]},
+ Fish:{kw:["fish","fishes"],refs:["Genesis 1:26","Jonah 1:17","Matthew 12:40","Matthew 14:17","Matthew 14:19","John 6:9","Luke 5:6","John 21:11"]}
+};
+const SYMBOLS={
+ Water:{kw:["water","waters"],refs:["Genesis 1:2","Genesis 7:18","Exodus 14:21","Exodus 17:6","Psalms 23:2","Isaiah 43:2","John 2:9","John 4:14","John 7:38","Matthew 14:29"]},
+ Fire:{kw:["fire"],refs:["Genesis 22:7","Exodus 3:2","Exodus 13:21","1 Kings 18:38","Daniel 3:25","Acts 2:3","Luke 12:49","Hebrews 12:29","Jeremiah 20:9"]},
+ Bread:{kw:["bread","loaves"],refs:["Exodus 16:4","Deuteronomy 8:3","1 Kings 17:6","Matthew 4:4","Matthew 6:11","Matthew 14:19","John 6:35","John 6:48","Luke 22:19"]},
+ Sword:{kw:["sword","swords"],refs:["Genesis 3:24","Judges 7:20","1 Samuel 17:45","1 Samuel 17:50","Matthew 10:34","Matthew 26:52","John 18:10","Ephesians 6:17","Hebrews 4:12","Revelation 1:16","Romans 13:4"]},
+ Stone:{kw:["stone","stones"],refs:["Genesis 28:18","Joshua 4:3","1 Samuel 17:49","Psalms 118:22","Daniel 2:34","Matthew 28:2","John 8:7","John 11:39","Acts 7:58","1 Peter 2:4","1 Peter 2:7"]},
+ Light:{kw:["light"],refs:["Genesis 1:3","Psalms 119:105","Isaiah 9:2","Matthew 5:14","Matthew 5:16","John 1:5","John 8:12","1 John 1:5"]}
+};
+const ERAS={
+ "Creation & Early World":["Genesis 1-11"],
+ "Patriarchs":["Genesis 12-50"],
+ "Exodus & Wilderness":["Exodus","Leviticus","Numbers","Deuteronomy"],
+ "Conquest & Judges":["Joshua","Judges","Ruth"],
+ "United Kingdom":["1 Samuel","2 Samuel","1 Kings 1-11","1 Chronicles","2 Chronicles 1-9","Psalms","Proverbs","Ecclesiastes","Song of Solomon"],
+ "Divided Kingdom & Exile":["1 Kings 12-22","2 Kings","2 Chronicles 10-36","Isaiah","Jeremiah","Lamentations","Ezekiel","Daniel","Hosea","Joel","Amos","Obadiah","Jonah","Micah","Nahum","Habakkuk","Zephaniah"],
+ "Return from Exile":["Ezra","Nehemiah","Esther","Haggai","Zechariah","Malachi"],
+ "Life of Christ":["Matthew","Mark","Luke","John"],
+ "Early Church":BOOKS.filter(b=>b.i>=43).map(b=>b.name)
+};
+const CH_POOL={fauna:FAUNA,symbol:SYMBOLS,era:ERAS};
+const CH_LABEL={fauna:"Fauna Call",symbol:"Symbol Check",era:"Era Check"};
+const CH_ASK={fauna:"Type a verse reference that features this animal.",symbol:"Type a verse reference that mentions this object.",era:"Type a verse reference from this period of Bible history."};
+function chalHit(S,c,ref){
+  if(c.type==="era")return (ERAS[c.choice]||[]).some(s=>{const m=s.match(/^(.+?)(?: (\d+)-(\d+))?$/);return m[1]===ref.book&&(!m[2]||(ref.ch>=+m[2]&&ref.ch<=+m[3]))});
+  const d=(CH_POOL[c.type]||{})[c.choice];if(!d)return false;
+  if(d.refs.some(s=>{const m=s.match(/^(.+?) (\d+):(\d+)(?:-(\d+))?$/);return m[1]===ref.book&&+m[2]===ref.ch&&ref.v>=+m[3]&&ref.v<=+(m[4]||m[3])}))return true;
+  const t=textFor(S,ref.book,ref.ch,ref.v);return !!t&&d.kw.some(w=>containsWord(t.text,w));
 }
-function resolveExtract(S,word,now){
-  const r=S.extractReq;if(!r)return;
-  let w=word;
-  if(w){if(!eligibleWords(S.verse.text).some(x=>x.toLowerCase()===w.toLowerCase()))throw GE("That word is not eligible to send.")}
-  else w=defaultWord(S.verse.text);
-  const out=r.scrambled?scrambleWord(w):w;
-  S.extractReq=null;
-  addLog(S,{kind:"clue",tag:"verse",title:"Word Extract",text:"The Hider sent the word: “"+out+"”."+(word?"":" (auto-selected)"),scrambled:!!r.scrambled});
-}
-function normalize(S,now){
-  accrue(S,now);
-  if(S.status==="playing"&&S.extractReq&&now>=S.extractReq.expiresAt)resolveExtract(S,null,now);
-  if(S.status==="playing"&&S.falseLead&&S.falseLead.pending&&now>=S.falseLead.expiresAt)finalizeFalseLead(S,[],true);
-}
-function guardHunterSpend(S,now,cost){
+function rerollOptions(k){const ab=HUNTER_ABILITIES.find(a=>a.k===k);return HUNTER_ABILITIES.filter(a=>a.tag===ab.tag&&a.k!==k&&!a.input).map(a=>a.k)}
+function buildDeck(){let n=0;const d=[];for(const c of CARDS)for(let i=0;i<c.copies;i++)d.push({id:"c"+(++n),k:c.k});return shuffle(d)}
+function drawCards(S,n){let got=0;for(let i=0;i<n;i++){if(!S.deck.length){S.deck=shuffle(S.discard);S.discard=[]}if(!S.deck.length)break;S.hand.push(S.deck.pop());got++}return got}
+function needDiscard(S){return Math.max(0,S.hand.length-S.handLimit)}
+function guardHand(S){const n=needDiscard(S);if(n)throw GE("Your hand is over the limit. Discard "+n+" card"+(n>1?"s":"")+" first.")}
+function discardCards(S,ids){const set=new Set(ids);const out=S.hand.filter(c=>set.has(c.id));if(out.length!==set.size)throw GE("Those cards are not in your hand.");S.hand=S.hand.filter(c=>!set.has(c.id));S.discard.push(...out)}
+
+/* ---------- investigations: Hunters ask, the Hider answers and draws ---------- */
+function guardHunter(S,now){
   if(S.status!=="playing")throw GE("The round is not active.");
   if(now<S.cooldownUntil)throw GE("Cooldown active: "+fmt(S.cooldownUntil-now)+" left.");
-  if(S.fieldTask&&S.fieldTask.active)throw GE("Field Task active: AP spending is paused.");
-  if(S.hunterAP-cost<1)throw GE("Not enough AP. Hunters must keep at least 1 AP.");
+  if(S.pending)throw GE("An investigation is already waiting for the Hider’s answer.");
+  if(S.challenge)throw GE("Clear the "+CH_LABEL[S.challenge.type]+" first.");
 }
 function hunterUse(S,now,k,input){
   const ab=HUNTER_ABILITIES.find(a=>a.k===k);
-  guardHunterSpend(S,now,ab.cost);
+  guardHunter(S,now);
+  if(S.abilityLock[k]&&now<S.abilityLock[k])throw GE(ab.name+" is locked for "+fmt(S.abilityLock[k]-now)+".");
   if(ab.precision&&S.falseLead&&!S.falseLead.cleared)throw GE("Blocked by False Lead. Rule out a decoy first.");
   if(k==="proximity"&&!BOOK(input))throw GE("Choose a book first.");
   if(k==="term"){input=String(input||"").trim();if(!/^[A-Za-z']+(-[A-Za-z']+)?$/.test(normQ(input)))throw GE("Enter a single word.")}
-  if(k==="extract"&&S.extractReq)throw GE("A Word Extract request is already pending.");
-  S.hunterAP-=ab.cost;S.hiderAP+=ab.cost;
-  const scr=!!S.scrambleArmed;S.scrambleArmed=false;
-  if(k==="extract"){
-    S.extractReq={expiresAt:now+EXTRACT_MS,scrambled:scr};
-    addLog(S,{kind:"event",tag:"meta",title:"Word Extract requested",text:"Waiting for the Hider to send a word."});
-    return;
-  }
-  addLog(S,{kind:"clue",tag:ab.tag,title:ab.name+(k==="proximity"||k==="term"?" • "+input:""),text:compute(k,S,input,scr),scrambled:scr});
+  S.pending={k,input:input||"",expiresAt:now+ANSWER_MS};
+  addLog(S,{kind:"event",tag:"meta",title:ab.name+(k==="proximity"||k==="term"?" • "+input:"")+" requested",text:"Waiting for the Hider’s answer."});
+}
+function answerPending(S,now,auto,word){
+  const p=S.pending;if(!p)return;
+  const ab=HUNTER_ABILITIES.find(a=>a.k===p.k),scr=!!S.scrambleArmed;
+  let text;
+  if(p.k==="extract"){
+    let w=word;
+    if(w){if(!eligibleWords(S.verse.text).some(x=>x.toLowerCase()===w.toLowerCase()))throw GE("That word is not eligible to send.")}
+    else w=defaultWord(S.verse.text);
+    text="The Hider sent the word: “"+(scr?scrambleWord(w):w)+"”."+(word?"":" (default word)");
+  }else text=compute(p.k,S,p.input,scr);
+  S.scrambleArmed=false;S.pending=null;
+  addLog(S,{kind:"clue",tag:ab.tag,title:ab.name+(p.k==="proximity"||p.k==="term"?" • "+p.input:"")+(p.rerolled?" (rerolled)":""),text,scrambled:scr});
+  if(!auto){const n=drawCards(S,ab.draw);addLog(S,{kind:"event",tag:"meta",vis:"hider",title:"Cards drawn",text:"You drew "+n+" card"+(n===1?"":"s")+" for answering."})}
 }
 function hunterGuess(S,now,book,ch,v){
   if(S.status!=="playing")throw GE("The round is not active.");
@@ -317,21 +370,74 @@ function hunterGuess(S,now,book,ch,v){
   const t=S.verse,g=book+" "+ch+":"+v;
   if(book===t.book&&ch===t.ch&&v===t.v){S.status="ended";S.winner="hunters";S.reason="Hunters found the verse with "+g+".";addLog(S,{kind:"ok",tag:"meta",title:"Final Guess",text:g+" is correct."});return}
   if(book===t.book&&ch===t.ch){S.cooldownUntil=now+COOLDOWN_MS;addLog(S,{kind:"bad",tag:"meta",title:"Final Guess • "+g,text:"Right book and chapter, wrong verse. 5 minute cooldown."});return}
-  S.hunterAP=Math.max(0,S.hunterAP-25);
-  addLog(S,{kind:"bad",tag:"meta",title:"Final Guess • "+g,text:"Wrong. Hunters lose 25 AP."});
-  if(S.hunterAP<=0){S.status="ended";S.winner="hider";S.reason="Hunters ran out of AP."}
+  S.cooldownUntil=now+WRONG_MS;
+  const n=drawCards(S,1);
+  addLog(S,{kind:"bad",tag:"meta",title:"Final Guess • "+g,text:"Wrong "+(book===t.book?"chapter":"book")+". 10 minute cooldown, and the Hider draws a card."});
+  if(n)addLog(S,{kind:"event",tag:"meta",vis:"hider",title:"Cards drawn",text:"You drew 1 card from a wrong Hunter guess."});
+}
+
+/* ---------- Hider card play ---------- */
+function playCard(S,now,id,opt,costIds){
+  if(S.status!=="playing")throw GE("The round is not active.");
+  guardHand(S);
+  const card=S.hand.find(c=>c.id===id);if(!card)throw GE("That card is not in your hand.");
+  const def=CARDS.find(c=>c.k===card.k);
+  const cost=(costIds||[]).filter(x=>x!==id);
+  if(cost.length!==def.cost)throw GE(def.name+" needs "+def.cost+" other card"+(def.cost===1?"":"s")+" marked to discard.");
+  switch(card.k){
+   case "fauna":case "symbol":case "era":{
+     if(S.challenge)throw GE("A challenge is already active.");
+     if(!opt||!CH_POOL[card.k][opt])throw GE("Pick an option first.");
+     S.challenge={type:card.k,choice:opt,expiresAt:now+CHAL_MS};
+     addLog(S,{kind:"event",tag:"meta",title:def.name+" • "+opt,text:CH_ASK[card.k]+" Investigations are paused until it is cleared (5 minutes at most)."});break}
+   case "override":{
+     if(!S.pending)throw GE("No investigation is waiting.");
+     const ab=HUNTER_ABILITIES.find(a=>a.k===S.pending.k);S.abilityLock[ab.k]=now+LOCK_MS;S.pending=null;
+     addLog(S,{kind:"bad",tag:"meta",title:"Inquiry Override",text:ab.name+" was blocked and is locked for 3 minutes."});break}
+   case "reroll":{
+     if(!S.pending)throw GE("No investigation is waiting.");
+     if(!rerollOptions(S.pending.k).includes(opt))throw GE("Pick a replacement investigation.");
+     S.pending.k=opt;S.pending.input="";S.pending.rerolled=true;
+     addLog(S,{kind:"event",tag:"meta",title:"Scan Reroll",text:"The Hider swapped the investigation for another from the same tier."});break}
+   case "scramble":{
+     if(S.scrambleArmed)throw GE("Signal Scramble is already armed.");
+     S.scrambleArmed=true;addLog(S,{kind:"event",tag:"meta",vis:"hider",title:"Signal Scramble armed",text:"The next scan result will be corrupted."});break}
+   case "offline":{
+     if(now<S.offlineUntil)throw GE("Offline Protocol is already active.");
+     S.offlineUntil=now+OFFLINE_MS;addLog(S,{kind:"event",tag:"meta",title:"Offline Protocol",text:"Verse and keyword tools are locked for 5 minutes."});break}
+   case "falselead":{
+     if(S.falseLead&&!S.falseLead.cleared)throw GE("A False Lead is already active.");
+     S.falseLead={pending:true,expiresAt:now+FL_MS,decoys:[],options:[],cleared:false};
+     addLog(S,{kind:"event",tag:"meta",title:"False Lead incoming",text:"The Hider is choosing decoys. Term Sweep and Sector Lock are blocked."});break}
+   case "shift":{
+     if(S.shifted>=1)throw GE("Position Shift is once per round.");
+     if(!opt||!opt.book)throw GE("Choose the new verse first.");
+     if(opt.ch===S.verse.ch&&opt.v===S.verse.v)throw GE("Choose a different verse.");
+     S.verse=opt;S.shifted=1;S.falseLead=null;
+     S.log.forEach(e=>{if(e.tag==="chapter"||e.tag==="verse")e.stale=true});
+     addLog(S,{kind:"event",tag:"meta",title:"Hider shifted position",text:"Same book, new verse. Chapter and verse clues are voided."});break}
+  }
+  discardCards(S,[id,...cost]);
+}
+function normalize(S,now){
+  if(S.status!=="playing")return;
+  if(S.endsAt&&now>=S.endsAt){S.status="ended";S.winner="hider";S.reason="Time ran out before the Hunters found the verse.";addLog(S,{kind:"event",tag:"meta",title:"Time up",text:S.reason});return}
+  if(S.pending&&now>=S.pending.expiresAt)answerPending(S,now,true);
+  if(S.challenge&&now>=S.challenge.expiresAt){addLog(S,{kind:"event",tag:"meta",title:CH_LABEL[S.challenge.type]+" expired",text:"Investigations are open again."});S.challenge=null}
+  if(S.falseLead&&S.falseLead.pending&&now>=S.falseLead.expiresAt)finalizeFalseLead(S,[],true);
 }
 function newRoom(code,hostId,name,role){
   return{code,rev:1,status:"lobby",hostId,translation:"NKJV",nkjv:{},players:{[hostId]:{name,role}},verse:null,
-    hunterAP:100,hiderAP:20,apAnchor:0,cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,fieldTask:null,falseLead:null,extractReq:null,log:[],winner:null,reason:""}
+    handLimit:HAND_LIMIT,hand:[],deck:[],discard:[],pending:null,challenge:null,abilityLock:{},ruleLock:0,endsAt:0,
+    cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,falseLead:null,log:[],winner:null,reason:""}
 }
 function textFor(S,book,ch,v){const k=book+"|"+ch+"|"+v;if(S.translation==="NKJV"&&S.nkjv&&S.nkjv[k])return{text:S.nkjv[k],src:"NKJV"};
   const s=SAMPLE.find(x=>x.book===book&&x.ch===ch&&x.v===v);return s?{text:s.text,src:"KJV"}:null}
 function autoDecoys(S){
   const t=S.verse,tb=BOOK(t.book);
   const others=SAMPLE.filter(s=>!(s.book===t.book&&s.ch===t.ch&&s.v===t.v));
-  const score=s=>(s.book===t.book?0:BOOK(s.book).ot===tb.ot?1:2)+Math.random()*0.5;
-  return others.sort((a,b)=>score(a)-score(b)).slice(0,2).map(s=>({book:s.book,ch:s.ch,v:s.v}));
+  const score=s=>s.book===t.book?0:BOOK(s.book).ot===tb.ot?1:2;
+  return others.map((s,i)=>({s,i})).sort((a,b)=>score(a.s)-score(b.s)||a.i-b.i).slice(0,2).map(x=>({book:x.s.book,ch:x.s.ch,v:x.s.v}));
 }
 function finalizeFalseLead(S,typed,auto){
   const same=(x,y)=>x.book===y.book&&x.ch===y.ch&&x.v===y.v;
@@ -340,7 +446,7 @@ function finalizeFalseLead(S,typed,auto){
   if(d.length<2)d=d.concat(autoDecoys(S).filter(x=>!d.some(y=>same(x,y)))).slice(0,2);
   const real={book:S.verse.book,ch:S.verse.ch,v:S.verse.v};
   S.falseLead={pending:false,decoys:d,options:shuffle([real,...d]),cleared:false};
-  addLog(S,{kind:"event",tag:"meta",title:"False Lead",text:"Three candidate verses arrived: "+S.falseLead.options.map(refStr).join(", ")+". Rule out a decoy to unlock Precision Intel."+(auto?" (decoys auto-selected)":"")});
+  addLog(S,{kind:"event",tag:"meta",title:"False Lead",text:"Three candidate verses arrived: "+S.falseLead.options.map(refStr).join(", ")+". Rule out a decoy to unlock Term Sweep and Sector Lock."+(auto?" (decoys auto-selected)":"")});
 }
 //#LOGIC-END
 
@@ -365,7 +471,8 @@ const Net={
     }catch(e){console.error(e)}
     render()})();return this.ready},
   lkey:c=>"vh.room."+c,
-  fix(S){if(!S)return null;S.log=S.log||[];S.nkjv=S.nkjv||{};S.players=S.players||{};S.fieldTask=S.fieldTask||null;S.extractReq=S.extractReq||null;S.falseLead=S.falseLead||null;
+  fix(S){if(!S)return null;["log","hand","deck","discard"].forEach(k=>{S[k]=S[k]||[]});S.nkjv=S.nkjv||{};S.players=S.players||{};S.abilityLock=S.abilityLock||{};
+    S.pending=S.pending||null;S.challenge=S.challenge||null;S.falseLead=S.falseLead||null;S.handLimit=S.handLimit||HAND_LIMIT;
     if(S.falseLead){S.falseLead.decoys=S.falseLead.decoys||[];S.falseLead.options=S.falseLead.options||[]}return S},
   async get(code){
     if(A.mode==="cloud"){const s=await A.fdb.ref("rooms/"+code).once("value");return this.fix(s.val())}
@@ -421,7 +528,7 @@ const myRole=()=>A.S&&A.S.players[A.me]?A.S.players[A.me].role:null;
 const isHost=()=>A.S&&A.S.hostId===A.me;
 const hiderId=S=>Object.keys(S.players).find(i=>S.players[i].role==="hider");
 const hunterIds=S=>Object.keys(S.players).filter(i=>S.players[i].role==="hunter");
-function view(){if(!A.S)return null;const D=clone(A.S);accrue(D,Date.now());return D}
+function view(){return A.S}
 function bookOptions(sel,fixed){return BOOKS.filter(b=>!fixed||b.name===fixed).map(b=>`<option value="${esc(b.name)}"${b.name===sel?" selected":""}>${esc(b.name)}</option>`).join("")}
 function trLabel(){const S=A.S;if(!S)return"Translation: NKJV";if(S.translation==="KJV")return"Translation: KJV";
   if(S.verse&&S.verse.src!=="NKJV")return"Translation: NKJV · sample text is KJV";return"Translation: NKJV"}
@@ -448,7 +555,7 @@ function landing(){
    <label>Your role<select id="j-role"><option value="hunter"${dv("j-role")!=="hider"?" selected":""}>Hunter</option><option value="hider"${dv("j-role")==="hider"?" selected":""}>Hider</option></select></label>
    <button class="btn" data-act="join">Join room</button></section></div>
   <section class="card"><h2>How a round works</h2>
-   <p>The Hider secretly picks a verse. Hunters start with 100 AP, the Hider with 20. Every AP Hunters spend on an investigation moves to the Hider, who also earns 5 AP every 5 minutes. Hunters win by naming the exact book, chapter and verse. They lose if their AP reaches 0.</p>
+   <p>The Hider secretly picks a verse and holds a hand of up to 6 tactical cards. Hunters investigate as often as they like, with no points to spend. Each time the Hider answers an investigation, the Hider draws cards. Hunters win by naming the exact book, chapter and verse. The Hider wins when the round timer runs out.</p>
    <p class="hint">${A.mode==="cloud"?"Rooms sync live across devices.":"Firebase is not set up yet, so rooms only sync between tabs of this browser. See the README."}</p></section>`;
 }
 function pairingCard(S){
@@ -479,10 +586,10 @@ function readPick(prefix,fixedBook){
   const src=dv(prefix+"-src")||(A.S.translation==="NKJV"?"NKJV":"KJV");
   return Object.assign(r,{text,src});
 }
-function parseRef(str){
-  const m=String(str||"").trim().match(/^(.+?)\s+(\d+)\s*:\s*(\d+)$/);if(!m)return null;
-  const b=BOOKS.find(x=>x.name.toLowerCase()===m[1].trim().toLowerCase());if(!b)return null;
-  const ch=+m[2],v=+m[3];if(ch<1||ch>b.ch||v<1)return null;return{book:b.name,ch,v};
+function parseRef(str){const m=String(str||"").trim().match(/^(.+?)\s+(\d+)\s*:\s*(\d+)$/);if(!m)return null;
+  const q=m[1].trim().toLowerCase().replace(/\./g,"");let c=BOOKS.filter(x=>x.name.toLowerCase()===q);
+  if(!c.length&&q.length>=3)c=BOOKS.filter(x=>x.name.toLowerCase().startsWith(q));
+  if(c.length!==1)return null;const b=c[0],ch=+m[2],v=+m[3];if(ch<1||ch>b.ch||v<1)return null;return{book:b.name,ch,v};
 }
 function lobby(){
   const S=A.S,r=myRole(),host=isHost();
@@ -500,13 +607,15 @@ function lobby(){
     <details><summary class="hint" style="cursor:pointer">Import NKJV verse text (${Object.keys(S.nkjv||{}).length} loaded)</summary>
      <p class="hint" style="margin:8px 0">The built-in verses use public-domain KJV text because the NKJV is copyrighted. If you have a license to the text, paste lines like <span class="mono">John|3|16|verse text</span>. Imported verses replace the KJV text and the badge shows plain NKJV.</p>
      <textarea id="nkjv-in" placeholder="John|3|16|...">${esc(dv("nkjv-in"))}</textarea><button class="btn sm" data-act="import-nkjv" style="margin-top:8px">Import</button></details>
+    <label>Round time limit<select id="tl-sel">${[[30,"30 minutes"],[45,"45 minutes"],[60,"60 minutes"],[90,"90 minutes"],[0,"No limit"]].map(([v,l])=>`<option value="${v}"${String(dv("tl-sel","60"))===String(v)?" selected":""}>${l}</option>`).join("")}</select></label>
     <button class="btn" data-act="start" ${canStart?"":"disabled"}>Start round</button>
     ${canStart?"":`<p class="hint">Needs a Hider with a locked verse and at least one Hunter.</p>`}</section>`:`<p class="hint">Waiting for the host to start the round.</p>`}`;
 }
 function lockReason(S,now){
   if(S.status!=="playing")return"Round over";
   if(now<S.cooldownUntil)return"Cooldown "+fmt(S.cooldownUntil-now);
-  if(S.fieldTask&&S.fieldTask.active)return"Field Task: spending paused";
+  if(S.pending)return"Waiting for the Hider";
+  if(S.challenge)return"Challenge active";
   return null;
 }
 function logHtml(S,role){
@@ -515,31 +624,32 @@ function logHtml(S,role){
   return items.map(e=>`<div class="entry ${esc(e.kind)}${e.stale?" stale":""}"><div class="m"><span>${new Date(e.t).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span>${e.scrambled?`<span class="pill warn">scrambled</span>`:""}${e.stale?`<span class="pill">voided by shift</span>`:""}</div><div class="t">${esc(e.title)}</div><div class="x">${esc(e.text)}</div></div>`).join("");
 }
 function statsHtml(S,now,role){
-  const nextAP=S.apAnchor+PASSIVE_MS;
-  return `<div class="stats"><div class="stat"><span class="l">Hunter AP</span><span class="ap" style="color:var(--hunter)">${S.hunterAP}</span></div>
-  <div class="stat"><span class="l">Hider AP</span><span class="ap" style="color:var(--hider)">${S.hiderAP}</span></div>
-  <div class="stat"><span class="l">Hider +5 AP in</span><span class="v" data-cd="${nextAP}" data-roll="${PASSIVE_MS}">${fmt(nextAP-now)}</span></div></div>`;
+  const mine=role==="hider";
+  return `<div class="stats"><div class="stat"><span class="l">${mine?"Your hand":"Hider’s hand"}</span><span class="ap" style="color:var(--hider)">Hand: ${S.hand.length} / ${S.handLimit}</span></div>
+  ${mine?`<div class="stat"><span class="l">Deck / discard</span><span class="v">${S.deck.length} / ${S.discard.length}</span></div>`:""}
+  ${S.endsAt?`<div class="stat"><span class="l">Time left</span><span class="v" data-cd="${S.endsAt}">${fmt(S.endsAt-now)}</span></div>`:""}</div>`;
 }
 function hunterView(){
   const S=view(),now=Date.now(),lock=lockReason(S,now),off=now<S.offlineUntil;
-  const fl=S.falseLead&&!S.falseLead.cleared,ft=S.fieldTask&&S.fieldTask.active;
+  const fl=S.falseLead&&!S.falseLead.cleared,ch=S.challenge,p=S.pending;
   const cards=HUNTER_ABILITIES.map(ab=>{
-    const blocked=lock||(ab.precision&&fl)||(ab.k==="extract"&&S.extractReq)||S.hunterAP-ab.cost<1;
+    const al=(S.abilityLock[ab.k]||0)>now;
+    const blocked=lock||al||(ab.precision&&fl);
     const input=ab.input==="book"?`<select id="in-prox" aria-label="Book to ping">${`<option value="">Choose a book</option>`+bookOptions(dv("in-prox"))}</select>`
       :ab.input==="word"?`<input id="in-term" placeholder="One word" value="${esc(dv("in-term"))}" maxlength="30" autocapitalize="none">`:"";
-    return `<div class="ab"><div class="h"><span class="n">${esc(ab.name)}</span><span class="cost">${ab.cost} AP</span></div><p>${esc(ab.d)}</p>${input}
-      <button class="btn sm" data-act="use" data-k="${ab.k}" ${blocked?"disabled":""}>${ab.k==="extract"&&S.extractReq?"Pending…":"Run"}</button></div>`}).join("");
+    return `<div class="ab"><div class="h"><span class="n">${esc(ab.name)}</span><span class="cost">Hider draws ${ab.draw}</span></div><p>${esc(ab.d)}</p>${input}
+      <button class="btn sm" data-act="use" data-k="${ab.k}" ${blocked?"disabled":""}>${al?"Locked "+fmt(S.abilityLock[ab.k]-now):"Run"}</button></div>`}).join("");
   const banners=[];
   if(S.cooldownUntil>now)banners.push(`<div class="banner bad"><strong>Cooldown</strong><span>No guesses or investigations for <span class="mono" data-cd="${S.cooldownUntil}">${fmt(S.cooldownUntil-now)}</span>.</span></div>`);
-  if(ft)banners.push(`<div class="banner"><strong>Field Task: AP spending paused</strong><span>${esc(S.fieldTask.prompt)}</span>
-    <div class="row"><input id="ft-ans" placeholder="Verification answer" value="${esc(dv("ft-ans"))}"><button class="btn sm" data-act="ft-submit">Submit</button></div></div>`);
-  if(fl&&S.falseLead.pending)banners.push(`<div class="banner"><strong>False Lead incoming: Precision Intel blocked</strong><span>The Hider is choosing decoys. They arrive within <span class="mono" data-cd="${S.falseLead.expiresAt}">${fmt(S.falseLead.expiresAt-now)}</span>.</span></div>`);
-  else if(fl)banners.push(`<div class="banner"><strong>False Lead: Precision Intel blocked</strong><span>Three candidate verses were sent in. Two are decoys. Rule one out to unlock Term Sweep and Sector Lock. A wrong pick costs 10 AP.</span>
+  if(p){const pa=HUNTER_ABILITIES.find(a=>a.k===p.k);banners.push(`<div class="banner"><strong>Waiting for the Hider: ${esc(pa.name)}</strong><span>The Hider answers within <span class="mono" data-cd="${p.expiresAt}">${fmt(p.expiresAt-now)}</span>. A Hider card may change or block the result.</span></div>`)}
+  if(ch)banners.push(`<div class="banner"><strong>${esc(CH_LABEL[ch.type])}: ${esc(ch.choice)}</strong><span>${esc(CH_ASK[ch.type])} Investigations are paused until you clear it, or after <span class="mono" data-cd="${ch.expiresAt}">${fmt(ch.expiresAt-now)}</span>.</span>
+    <div class="row"><input id="ch-ans" placeholder="e.g. Genesis 8:11" value="${esc(dv("ch-ans"))}"><button class="btn sm" data-act="ch-submit">Submit reference</button></div></div>`);
+  if(fl&&S.falseLead.pending)banners.push(`<div class="banner"><strong>False Lead incoming: Term Sweep and Sector Lock blocked</strong><span>The Hider is choosing decoys. They arrive within <span class="mono" data-cd="${S.falseLead.expiresAt}">${fmt(S.falseLead.expiresAt-now)}</span>.</span></div>`);
+  else if(fl)banners.push(`<div class="banner"><strong>False Lead: Term Sweep and Sector Lock blocked</strong><span>Three candidate verses were sent in. Two are decoys. Rule one out to unlock them. A wrong pick locks this for 1 minute.</span>
     <div class="row">${S.falseLead.options.map((o,i)=>`<button class="btn ghost sm" data-act="decoy" data-i="${i}">Rule out ${esc(o.book+" "+o.ch+":"+o.v)}</button>`).join("")}</div></div>`);
   if(off)banners.push(`<div class="banner bad"><strong>Offline Protocol</strong><span>Verse and keyword helper tools are locked for <span class="mono" data-cd="${S.offlineUntil}">${fmt(S.offlineUntil-now)}</span>.</span></div>`);
-  if(S.extractReq)banners.push(`<div class="banner"><strong>Word Extract in transit</strong><span>The Hider has <span class="mono" data-cd="${S.extractReq.expiresAt}">${fmt(S.extractReq.expiresAt-now)}</span> to choose a word.</span></div>`);
   return header()+`<section class="card hot">${statsHtml(S,now,"hunter")}</section>${banners.join("")}
-  <div class="split"><section class="card"><h2>Recon deck</h2><div class="grid">${cards}</div></section>
+  <div class="split"><section class="card"><h2>Recon deck</h2><p class="hint">No limits on how often you investigate, apart from the locks and cooldowns above.</p><div class="grid">${cards}</div></section>
   <div style="display:flex;flex-direction:column;gap:16px;min-width:0"><section class="card"><h2>Clue log</h2><div class="log">${logHtml(S,"hunter")}</div></section>
   <section class="card"><h2>Field tools</h2>${off?`<p class="hint">Locked by the Hider.</p>`:`
     <label>Verse lookup<div class="row"><select id="lk-book"><option value="">Book</option>${bookOptions(dv("lk-book"))}</select><input id="lk-c" inputmode="numeric" size="3" placeholder="Ch" value="${esc(dv("lk-c"))}"><input id="lk-v" inputmode="numeric" size="3" placeholder="V" value="${esc(dv("lk-v"))}"><button class="btn sm" data-act="lookup">Look up</button></div></label>
@@ -547,29 +657,46 @@ function hunterView(){
     <div id="tool-out" class="hint">${esc(A.flags.toolOut||"Searches the built-in verse set.")}</div>`}</section></div></div>
   <div class="row"><button class="btn" data-act="drawer">Final Guess</button></div>`;
 }
+function optSel(id,vals,labelFn){return `<select id="ch-${id}" aria-label="Choose">${`<option value="">Choose</option>`+vals.map(v=>`<option value="${esc(v)}"${dv("ch-"+id)===v?" selected":""}>${esc(labelFn?labelFn(v):v)}</option>`).join("")}</select>`}
+function handHtml(S,now,need){
+  const sel=A.flags.dsel||{};
+  return S.hand.map(c=>{
+    const d=CARDS.find(x=>x.k===c.k),playing=S.status==="playing";
+    const marked=S.hand.filter(h=>h.id!==c.id&&sel[h.id]).length;
+    let extra="",why="";
+    if(c.k==="fauna"||c.k==="symbol"||c.k==="era"){extra=optSel(c.id,Object.keys(CH_POOL[c.k]));if(S.challenge)why="A challenge is already active."}
+    if(c.k==="reroll"){const o=S.pending?rerollOptions(S.pending.k):[];extra=optSel(c.id,o,k=>HUNTER_ABILITIES.find(a=>a.k===k).name);if(!S.pending)why="Needs a waiting investigation.";else if(!o.length)why="No other investigation in this tier."}
+    if(c.k==="override"&&!S.pending)why="Needs a waiting investigation.";
+    if(c.k==="scramble"&&S.scrambleArmed)why="Already armed.";
+    if(c.k==="offline"&&now<S.offlineUntil)why="Already active.";
+    if(c.k==="falselead"&&S.falseLead&&!S.falseLead.cleared)why="A False Lead is already active.";
+    if(c.k==="shift"&&S.shifted>=1)why="Already used this round.";
+    const off=!playing||need>0||marked!==d.cost||!!why;
+    return `<div class="ab${sel[c.id]?" sel":""}"><div class="h"><span class="n">${esc(d.name)}</span><span class="cost">${d.cost?"Discard "+d.cost:"No discard"}</span></div><p>${esc(d.d)}</p>${extra}
+      <div class="row"><button class="btn sm" data-act="h-play" data-id="${c.id}" ${off?"disabled":""}>Play</button>
+      <label class="chk"><input type="checkbox" data-mark="${c.id}" ${sel[c.id]?"checked":""}> Mark</label></div>${why?`<p class="hint">${esc(why)}</p>`:d.cost&&marked!==d.cost?`<p class="hint">Mark ${d.cost} other card${d.cost>1?"s":""} to pay the cost.</p>`:""}</div>`}).join("");
+}
 function hiderView(){
-  const S=view(),now=Date.now(),v=S.verse;
-  const ab=(k,name,cost,d,extra="")=>`<div class="ab"><div class="h"><span class="n">${name}</span><span class="cost">${cost} AP</span></div><p>${d}</p>${extra}<button class="btn sm" data-act="h-${k}" ${S.status!=="playing"||S.hiderAP<cost||(k==="shift"&&S.shifted>=1)||(k==="false"&&S.falseLead&&!S.falseLead.cleared)?"disabled":""}>Deploy</button></div>`;
+  const S=view(),now=Date.now(),v=S.verse,need=needDiscard(S),p=S.pending,pa=p&&HUNTER_ABILITIES.find(a=>a.k===p.k);
+  const sel=A.flags.dsel||{};
+  const ext=p&&p.k==="extract";
   const words=v.text.split(/\s+/).map(w=>{const t=tokens(w);const core=t.length?t.join("-"):"";const ok=core&&isEligible(core)&&eligibleWords(v.text).some(x=>x.toLowerCase()===core.toLowerCase());
-    return S.extractReq&&ok?`<button class="w ok" data-act="send-word" data-w="${esc(core)}">${esc(w)}</button>`:`<span class="w${ok?" ok":""}" style="${ok?"cursor:default":""}">${esc(w)}</span>`}).join(" ");
+    return ext&&ok?`<button class="w ok" data-act="send-word" data-w="${esc(core)}" ${need?"disabled":""}>${esc(w)}</button>`:`<span class="w${ok?" ok":""}" style="${ok?"cursor:default":""}">${esc(w)}</span>`}).join(" ");
   const decoyPick=[1,2].map(n=>`<input id="fl-d${n}" placeholder="Decoy ${n}, e.g. John 3:16 (blank = auto)" value="${esc(dv("fl-d"+n))}" aria-label="Decoy ${n}">`).join("");
-  const guesses=S.log.filter(e=>e.title&&e.title.startsWith("Final Guess"));
+  const hasShift=S.hand.some(c=>c.k==="shift")&&!S.shifted;
   return header()+`<section class="card hot">${statsHtml(S,now,"hider")}</section>
-  <section class="card hot"><h2>Secret verse</h2><div class="verse">${S.extractReq?words:esc(v.text)}<div class="hint mono">${esc(refStr(v))} · ${esc(v.src)}</div></div>
-   ${S.extractReq?`<div class="banner"><strong>Word Extract requested</strong><span>Tap one highlighted word to send it. Filler words are never eligible. Auto-send in <span class="mono" data-cd="${S.extractReq.expiresAt}">${fmt(S.extractReq.expiresAt-now)}</span>.</span>
-     <div class="row"><button class="btn sm" data-act="send-default">Send Default</button></div></div>`:""}
+  ${need?`<div class="banner bad"><strong>Hand limit: discard ${need} card${need>1?"s":""}</strong><span>Mark ${need} card${need>1?"s":""} below, then discard. You cannot answer or play cards until you are at ${S.handLimit} or fewer.</span>
+    <div class="row"><button class="btn sm" data-act="h-discard">Discard marked (${S.hand.filter(c=>sel[c.id]).length} / ${need})</button></div></div>`:""}
+  ${p?`<div class="banner"><strong>Investigation waiting: ${esc(pa.name)}${p.k==="proximity"||p.k==="term"?" • "+esc(p.input):""}${p.rerolled?" (rerolled)":""}</strong><span>${ext?"Tap a highlighted word in your verse to send it, or send the default word. ":""}Answering draws ${pa.draw} card${pa.draw>1?"s":""}. It auto-answers in <span class="mono" data-cd="${p.expiresAt}">${fmt(p.expiresAt-now)}</span> with no cards drawn. Play Inquiry Override or Scan Reroll first if you hold them.</span>
+    <div class="row">${ext?`<button class="btn sm" data-act="send-default" ${need?"disabled":""}>Send default word</button>`:`<button class="btn sm" data-act="h-answer" ${need?"disabled":""}>Answer</button>`}</div></div>`:""}
+  <section class="card hot"><h2>Secret verse</h2><div class="verse">${ext?words:esc(v.text)}<div class="hint mono">${esc(refStr(v))} · ${esc(v.src)}</div></div>
    ${S.falseLead&&S.falseLead.pending?`<div class="banner"><strong>False Lead: choose your decoys</strong><span>Name two decoy verses, or let the app pick. Auto-pick in <span class="mono" data-cd="${S.falseLead.expiresAt}">${fmt(S.falseLead.expiresAt-now)}</span>.</span>
      <div class="row">${decoyPick}</div><div class="row"><button class="btn sm" data-act="fl-send">Send decoys</button><button class="btn ghost sm" data-act="fl-auto">Auto-pick</button></div></div>`:""}
+   ${S.challenge?`<p class="hint"><span class="pill warn">active</span> ${esc(CH_LABEL[S.challenge.type])}: ${esc(S.challenge.choice)}. Hunters must clear it (<span class="mono" data-cd="${S.challenge.expiresAt}">${fmt(S.challenge.expiresAt-now)}</span> at most).</p>`:""}
    ${S.scrambleArmed?`<p class="hint"><span class="pill warn">armed</span> Signal Scramble will corrupt the next scan result.</p>`:""}
-   ${S.fieldTask&&S.fieldTask.active?`<p class="hint"><span class="pill warn">active</span> Field Task is pausing Hunter spending.</p>`:""}
    ${now<S.offlineUntil?`<p class="hint"><span class="pill warn">active</span> Offline Protocol ends in <span class="mono" data-cd="${S.offlineUntil}">${fmt(S.offlineUntil-now)}</span>.</p>`:""}</section>
-  <div class="split"><section class="card"><h2>Countermeasures</h2><div class="grid">
-   ${ab("scramble","Signal Scramble",15,"Corrupts one detail in the Hunters’ next scan result.")}
-   ${ab("offline","Offline Protocol",20,"Locks the Hunters’ verse and keyword tools for 5 minutes.")}
-   ${ab("false","False Lead",25,"Sends two decoy verses alongside yours. You get 5 minutes to choose them. Blocks Term Sweep and Sector Lock until Hunters rule out a decoy.")}
-   ${ab("field","Field Task",30,"Pauses Hunter AP spending until they enter your verification answer.",`<input id="ft-prompt" placeholder="Prompt (optional)" value="${esc(dv("ft-prompt"))}"><input id="ft-word" placeholder="Answer word (default: MANNA)" value="${esc(dv("ft-word"))}">`)}
-   ${ab("shift","Shift Position",50,"Move to another verse in the same book. Once per round. Voids chapter and verse clues."+(S.shifted?" Already used.":""),`<details ${dv("sh-ct")||dv("sh-cc")?"open":""}><summary class="hint" style="cursor:pointer">New verse in ${esc(v.book)}</summary>${versePicker("sh",v.book)}</details>`)}
-  </div></section>
+  <div class="split"><section class="card"><h2>Your hand</h2><p class="hint">Mark cards to pay a play cost or to discard. Hand limit ${S.handLimit}.</p><div class="grid">${S.hand.length?handHtml(S,now,need):`<p class="hint">Your hand is empty. Answer an investigation to draw cards.</p>`}</div>
+   ${hasShift?`<details ${dv("sh-ct")||dv("sh-cc")?"open":""}><summary class="hint" style="cursor:pointer">Position Shift: new verse in ${esc(v.book)}</summary>${versePicker("sh",v.book)}</details>`:""}</section>
   <div style="display:flex;flex-direction:column;gap:16px;min-width:0"><section class="card"><h2>Hunter activity</h2><div class="log">${logHtml(S,"hider")}</div></section></div></div>`;
 }
 function ended(){
@@ -581,7 +708,7 @@ function ended(){
 function drawer(){
   const S=A.S;
   return `<div class="drawer" role="dialog" aria-label="Final guess"><div class="in"><div class="row" style="justify-content:space-between"><h2>Final Guess</h2><button class="btn ghost sm" data-act="drawer">Close</button></div>
-  <p class="hint">Exact match wins. Right chapter, wrong verse: 5 minute cooldown. Wrong book or chapter: −25 AP.</p>
+  <p class="hint">Exact match wins. Right chapter, wrong verse: 5 minute cooldown. Wrong book or chapter: 10 minute cooldown and the Hider draws a card.</p>
   <div class="row"><label>Book<select id="g-book"><option value="">Book</option>${bookOptions(dv("g-book"))}</select></label>
   <label>Chapter<input id="g-c" inputmode="numeric" size="4" value="${esc(dv("g-c"))}"></label><label>Verse<input id="g-v" inputmode="numeric" size="4" value="${esc(dv("g-v"))}"></label></div>
   <div class="row"><button class="btn bad" data-act="guess" ${S.status!=="playing"||Date.now()<S.cooldownUntil?"disabled":""}>Submit guess</button></div></div></div>`;
@@ -628,7 +755,7 @@ function render(){
   window.scrollTo(0,y);
 }
 document.addEventListener("input",e=>{const t=e.target;if(t.id)A.drafts[t.id]=t.value;if(t.id&&/-ct$/.test(t.id)){delete A.drafts[t.id.replace(/-ct$/,"-src")]}if(t.id==="j-name"||t.id==="h-name"){try{localStorage.setItem("vh.name",t.value)}catch(x){}}});
-document.addEventListener("change",e=>{const t=e.target;if(t.id)A.drafts[t.id]=t.value;if(t.id==="st-theme")applyTheme(t.value);
+document.addEventListener("change",e=>{const t=e.target;if(t.dataset&&t.dataset.mark){A.flags.dsel=A.flags.dsel||{};A.flags.dsel[t.dataset.mark]=t.checked;render();return}if(t.id)A.drafts[t.id]=t.value;if(t.id==="st-theme")applyTheme(t.value);
   if(t.id==="tr-sel"&&isHost())act(S=>{S.translation=t.value;if(S.verse){const x=textFor(S,S.verse.book,S.verse.ch,S.verse.v);if(x&&S.verse.src!==x.src&&SAMPLE.some(s=>s.book===S.verse.book&&s.ch===S.verse.ch&&s.v===S.verse.v)){S.verse.text=x.text;S.verse.src=x.src}}})});
 
 /* ---------- actions ---------- */
@@ -667,18 +794,22 @@ const H={
     if(!n){toast("No valid lines found. Use Book|Chapter|Verse|Text.");return}
     act(S=>{S.nkjv=Object.assign({},S.nkjv,add);if(S.verse){const x=textFor(S,S.verse.book,S.verse.ch,S.verse.v);if(x&&SAMPLE.some(s=>s.book===S.verse.book&&s.ch===S.verse.ch&&s.v===S.verse.v)){S.verse.text=x.text;S.verse.src=x.src}}});
     A.drafts["nkjv-in"]="";toast(n+" verse"+(n>1?"s":"")+" imported.")},
-  start(){act((S,now)=>{if(S.hostId!==A.me)throw GE("Only the host can start.");if(!hiderId(S)||!S.verse)throw GE("The Hider needs a locked verse.");if(!hunterIds(S).length)throw GE("Need at least one Hunter.");
-    Object.assign(S,{status:"playing",hunterAP:100,hiderAP:20,apAnchor:now,cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,fieldTask:null,falseLead:null,extractReq:null,log:[],winner:null,reason:""});
-    addLog(S,{kind:"event",tag:"meta",title:"Round started",text:"Hunters 100 AP. Hider 20 AP."})})},
-  again(){act(S=>{if(S.hostId!==A.me)throw GE("Only the host can reset.");Object.assign(S,{status:"lobby",verse:null,log:[],winner:null,reason:"",extractReq:null,falseLead:null,fieldTask:null,scrambleArmed:false,shifted:0,cooldownUntil:0,offlineUntil:0})})},
+  start(){const tl=parseInt(dv("tl-sel","60"),10)||0;act((S,now)=>{if(S.hostId!==A.me)throw GE("Only the host can start.");if(!hiderId(S)||!S.verse)throw GE("The Hider needs a locked verse.");if(!hunterIds(S).length)throw GE("Need at least one Hunter.");
+    Object.assign(S,{status:"playing",hand:[],deck:buildDeck(),discard:[],handLimit:HAND_LIMIT,pending:null,challenge:null,abilityLock:{},ruleLock:0,endsAt:tl>0?now+tl*60000:0,cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,falseLead:null,log:[],winner:null,reason:""});
+    drawCards(S,START_HAND);A.flags.dsel={};
+    addLog(S,{kind:"event",tag:"meta",title:"Round started",text:"The Hider holds "+START_HAND+" cards (limit "+HAND_LIMIT+")."+(tl>0?" Time limit: "+tl+" minutes.":"")})})},
+  again(){act(S=>{if(S.hostId!==A.me)throw GE("Only the host can reset.");Object.assign(S,{status:"lobby",verse:null,log:[],winner:null,reason:"",pending:null,challenge:null,falseLead:null,scrambleArmed:false,shifted:0,cooldownUntil:0,offlineUntil:0,hand:[],deck:[],discard:[],abilityLock:{},ruleLock:0,endsAt:0});A.flags.dsel={}})},
   use(b){const k=b.dataset.k;const ab=HUNTER_ABILITIES.find(a=>a.k===k);const input=ab.input==="book"?dv("in-prox"):ab.input==="word"?dv("in-term"):null;act((S,now)=>hunterUse(S,now,k,input))},
   guess(){const b=dv("g-book"),c=dv("g-c"),v=dv("g-v");act((S,now)=>{hunterGuess(S,now,b,c,v);A.drawer=false})},
-  decoy(b){const i=+b.dataset.i;act(S=>{const fl=S.falseLead;if(!fl||fl.cleared||fl.pending)return;const o=fl.options[i];
-    const isDecoy=fl.decoys.some(d=>d.book===o.book&&d.ch===o.ch&&d.v===o.v);
-    if(isDecoy){fl.cleared=true;addLog(S,{kind:"ok",tag:"meta",title:"False Lead cleared",text:refStr(o)+" was a decoy. Precision Intel is unlocked."})}
-    else{if(S.hunterAP<=10)throw GE("Not enough AP to risk a wrong pick.");S.hunterAP-=10;S.hiderAP+=10;addLog(S,{kind:"bad",tag:"meta",title:"False Lead",text:refStr(o)+" was not a decoy. 10 AP lost."})}})},
-  "ft-submit"(){const a=(dv("ft-ans")||"").trim().toLowerCase();act(S=>{const f=S.fieldTask;if(!f||!f.active)return;
-    if(a&&a===f.answer.toLowerCase()){f.active=false;addLog(S,{kind:"ok",tag:"meta",title:"Field Task complete",text:"Spending is unlocked."})}else throw GE("That answer does not match.")})},
+  decoy(b){const i=+b.dataset.i;act((S,now)=>{const fl=S.falseLead;if(!fl||fl.cleared||fl.pending)return;
+    if(now<(S.ruleLock||0))throw GE("Wait "+fmt(S.ruleLock-now)+" before ruling out another.");
+    const o=fl.options[i];const isDecoy=fl.decoys.some(d=>d.book===o.book&&d.ch===o.ch&&d.v===o.v);
+    if(isDecoy){fl.cleared=true;addLog(S,{kind:"ok",tag:"meta",title:"False Lead cleared",text:refStr(o)+" was a decoy. Term Sweep and Sector Lock are unlocked."})}
+    else{S.ruleLock=now+RULE_MS;addLog(S,{kind:"bad",tag:"meta",title:"False Lead",text:refStr(o)+" was not a decoy. Ruling out is locked for 1 minute."})}})},
+  "ch-submit"(){const ref=parseRef(dv("ch-ans"));if(!ref){toast("Write a reference like “Genesis 8:11”.");return}
+    act(S=>{const c=S.challenge;if(!c)return;
+      if(chalHit(S,c,ref)){S.challenge=null;A.drafts["ch-ans"]="";addLog(S,{kind:"ok",tag:"meta",title:CH_LABEL[c.type]+" cleared",text:refStr(ref)+" matched “"+c.choice+"”. Investigations are open again."})}
+      else throw GE(refStr(ref)+" does not match “"+c.choice+"”. Try another verse.")})},
   lookup(){const book=dv("lk-book"),c=parseInt(dv("lk-c"),10),v=parseInt(dv("lk-v"),10);
     if(Date.now()<view().offlineUntil){toast("Locked by Offline Protocol.");return}
     const t=BOOK(book)?textFor(A.S,book,c,v):null;A.flags.toolOut=t?book+" "+c+":"+v+" — "+t.text:"Not in the built-in verse set.";render()},
@@ -700,24 +831,21 @@ const H={
     }catch(e){toast("Could not fetch that verse. Check the reference or type the text.")}
     A.flags["f"+p]=false;render();
   },
-  "send-word"(b){const w=b.dataset.w;act((S,now)=>resolveExtract(S,w,now))},
-  "send-default"(){act((S,now)=>resolveExtract(S,null,now))},
-  "h-scramble"(){act(S=>{hSpend(S,15);S.scrambleArmed=true;addLog(S,{kind:"event",tag:"meta",vis:"hider",title:"Signal Scramble armed",text:"The next Hunter scan result will be corrupted."})})},
-  "h-offline"(){act((S,now)=>{hSpend(S,20);S.offlineUntil=now+OFFLINE_MS;addLog(S,{kind:"event",tag:"meta",title:"Offline Protocol",text:"Verse and keyword tools are locked for 5 minutes."})})},
-  "h-false"(){act((S,now)=>{hSpend(S,25);S.falseLead={pending:true,expiresAt:now+FL_MS,decoys:[],options:[],cleared:false};
-      addLog(S,{kind:"event",tag:"meta",title:"False Lead incoming",text:"The Hider is choosing decoys. Precision Intel is blocked."})})},
+  "send-word"(b){const w=b.dataset.w;act((S,now)=>{guardHand(S);answerPending(S,now,false,w)})},
+  "send-default"(){act((S,now)=>{guardHand(S);answerPending(S,now,false,null)})},
+  "h-answer"(){act((S,now)=>{guardHand(S);if(!S.pending)return;if(S.pending.k==="extract")throw GE("Tap a highlighted word to send it, or send the default word.");answerPending(S,now,false)})},
+  "h-play"(b){const id=b.dataset.id,S0=A.S,c=S0.hand.find(x=>x.id===id);if(!c)return;
+    const sel=A.flags.dsel||{};const cost=Object.keys(sel).filter(x=>sel[x]&&x!==id&&S0.hand.some(h=>h.id===x));
+    let opt=dv("ch-"+id);
+    if(c.k==="shift"){try{opt=readPick("sh",S0.verse.book)}catch(e){toast(e.message);return}}
+    act((S,now)=>{playCard(S,now,id,opt,cost);A.flags.dsel={};if(c.k==="shift"){["sh-cc","sh-cv","sh-ct","sh-src"].forEach(k=>delete A.drafts[k])}})},
+  "h-discard"(){act(S=>{const n=needDiscard(S);if(n<=0)return;const sel=A.flags.dsel||{};const ids=S.hand.filter(c=>sel[c.id]).map(c=>c.id);
+    if(ids.length!==n)throw GE("Mark exactly "+n+" card"+(n>1?"s":"")+" to discard.");discardCards(S,ids);A.flags.dsel={}})},
   "fl-send"(){const raw=[1,2].map(n=>(dv("fl-d"+n)||"").trim()).filter(Boolean);const typed=raw.map(parseRef);
     if(typed.some(x=>!x)){toast("Write decoys like \u201cJohn 3:16\u201d.");return}
     act(S=>{if(!S.falseLead||!S.falseLead.pending)return;finalizeFalseLead(S,typed,false)})},
-  "fl-auto"(){act(S=>{if(!S.falseLead||!S.falseLead.pending)return;finalizeFalseLead(S,[],true)})},
-  "h-field"(){act(S=>{hSpend(S,30);const p=(dv("ft-prompt")||"").trim()||"Find the Hider in person and ask for the verification word.";const a=(dv("ft-word")||"").trim()||"MANNA";
-    S.fieldTask={prompt:p,answer:a,active:true};addLog(S,{kind:"event",tag:"meta",title:"Field Task",text:p})})},
-  "h-shift"(){try{const v=readPick("sh",A.S.verse.book);act(S=>{if(S.shifted>=1)throw GE("Shift Position is once per round.");
-    if(v.ch===S.verse.ch&&v.v===S.verse.v)throw GE("Choose a different verse.");hSpend(S,50);S.verse=v;S.shifted=1;S.falseLead=null;
-    S.log.forEach(e=>{if(e.tag==="chapter"||e.tag==="verse")e.stale=true});
-    addLog(S,{kind:"event",tag:"meta",title:"Hider shifted position",text:"Same book, new verse. Chapter and verse clues are voided."})})}catch(e){toast(e.message)}}
+  "fl-auto"(){act(S=>{if(!S.falseLead||!S.falseLead.pending)return;finalizeFalseLead(S,[],true)})}
 };
-function hSpend(S,c){if(S.status!=="playing")throw GE("The round is not active.");if(S.hiderAP<c)throw GE("Not enough AP.");S.hiderAP-=c}
 document.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b)return;
   if(b.dataset.act==="close-modal-bg"&&e.target!==b)return;
   const f=H[b.dataset.act==="close-modal-bg"?"close-modal":b.dataset.act];if(f)f(b)});
@@ -725,14 +853,13 @@ document.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(
 /* ---------- clock ---------- */
 setInterval(()=>{
   const now=Date.now();
-  document.querySelectorAll("[data-cd]").forEach(el=>{let t=+el.dataset.cd;const roll=+el.dataset.roll;if(roll&&t<=now)t+=Math.ceil((now-t+1)/roll)*roll;el.textContent=fmt(t-now)});
+  document.querySelectorAll("[data-cd]").forEach(el=>{el.textContent=fmt(+el.dataset.cd-now)});
   const S=A.S;if(!S||S.status!=="playing")return;
   const r=myRole();
-  const dl=[S.extractReq&&S.extractReq.expiresAt,S.falseLead&&S.falseLead.pending&&S.falseLead.expiresAt].filter(Boolean);
+  const dl=[S.endsAt,S.pending&&S.pending.expiresAt,S.challenge&&S.challenge.expiresAt,S.falseLead&&S.falseLead.pending&&S.falseLead.expiresAt].filter(Boolean);
   if(dl.length){const late=now-Math.min(...dl);if((r==="hider"&&late>=0||r==="hunter"&&late>=4000)&&!A.flags.resolving){A.flags.resolving=true;act(()=>{}).then(()=>{A.flags.resolving=false})}}
-  const D=view();if(D.hunterAP<=0||(S.cooldownUntil&&S.cooldownUntil>now-1100&&S.cooldownUntil<=now))render();
-  if(S.offlineUntil&&S.offlineUntil>now-1100&&S.offlineUntil<=now)render();
   if(S.cooldownUntil&&S.cooldownUntil<=now&&S.cooldownUntil>now-1100)render();
+  if(S.offlineUntil&&S.offlineUntil>now-1100&&S.offlineUntil<=now)render();
 },1000);
 
 /* ---------- boot ---------- */
