@@ -1,5 +1,5 @@
 const firebaseConfig = {
-  apiKey: "(copy from the console)",
+  apiKey: "IzaSyDE3bU-gv6RNuhgjgsffwqdEuCLXpDcij0",
   authDomain: "verse-hunter-241ca.firebaseapp.com",
   databaseURL: "https://verse-hunter-241ca-default-rtdb.firebaseio.com",
   projectId: "verse-hunter-241ca",
