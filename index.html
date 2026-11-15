@@ -260,7 +260,7 @@ function wordCount(text){return normQ(text).split(/\s+/).filter(w=>/[A-Za-z0-9]/
 function isEligible(w){const k=normQ(w).toLowerCase().replace(/^'+|'+$/g,"");return k.length>=2&&!STOP.has(k)&&!/^[0-9]+$/.test(k)}
 function eligibleWords(text){const seen=new Set(),out=[];for(const t of tokens(text)){const k=t.toLowerCase();if(isEligible(t)&&!seen.has(k)){seen.add(k);out.push(t)}}return out}
 // Default fallback word is deterministic: the longest eligible content word (first one wins a tie).
-function defaultWord(text){const el=eligibleWords(text);const pool=el.length?el:tokens(text);let best="";for(const w of pool)if(w.length>best.length)best=w;return best}
+function defaultWord(text,ex){const el=eligibleWords(text);let pool=el.length?el:tokens(text);ex=ex||[];const fr=pool.filter(w=>!ex.includes(w.toLowerCase()));if(fr.length)pool=fr;let best="";for(const w of pool)if(w.length>best.length)best=w;return best}
 function containsWord(text,w){const k=normQ(w).toLowerCase().trim();if(!k)return false;
   for(const t of tokens(text)){const l=t.toLowerCase();if(l===k)return true;if(l.includes("-")&&l.split("-").includes(k))return true}return false}
 // Shuffle is used only to set the order of the Hider deck and of the False Lead choices. There are no dice or roll checks.
@@ -268,23 +268,28 @@ function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor
 function scrambleWord(w){if(w.length<3)return w;let o=w[0]+w.slice(1).split("").reverse().join("");if(o===w)o=w.slice(1)+w[0];return o}
 const fmt=ms=>{ms=Math.max(0,Math.ceil(ms/1000));return Math.floor(ms/60)+":"+String(ms%60).padStart(2,"0")};
 
-function qState(S,k){if(S.spent&&S.spent[k])return"used";const b=S.blocked&&S.blocked[k];if(b!==undefined&&b!==null&&(S.qCount||0)<=b)return"blocked";return"ok"}
+function qState(S,k){const ab=HUNTER_ABILITIES.find(a=>a.k===k);if(((S.spent&&S.spent[k])||0)>=((ab&&ab.max)||1))return"used";const b=S.blocked&&S.blocked[k];if(b!==undefined&&b!==null&&(S.qCount||0)<=b)return"blocked";return"ok"}
 function tier(d){return d<=3?0:d<=10?1:2}
 const TIERS=["HOT","WARM","COLD"];
 // draw = how many cards the Hider draws when answering. Book-level answers draw 1, verse-level or wider draw 2, precision scans draw 3.
-const IC={canon:"⚖️",division:"🗂️",threshold:"📏",scroll:"📜",proximity:"📡",author:"✍️",tally:"🔢",extract:"🔤",term:"🔍",sector:"🎯",
+const IC={canon:"⚖️",division:"🗂️",threshold:"📏",scroll:"📜",proximity:"📡",author:"✍️",tally:"🔢",extract:"🔤",term:"🔍",sector:"🎯",chapterpar:"📖",parity:"➗",first:"🅰️",longest:"📐",window:"🪟",
  fauna:"🐾",era:"⏳",symbol:"🗝️",override:"⛔",reroll:"🔄",scramble:"📻",offline:"📵",falselead:"🎭",shift:"🧭"};
 const HUNTER_ABILITIES=[
  {k:"canon",name:"Canon Split",draw:1,tag:"book",d:"Reveals Old Testament or New Testament."},
  {k:"division",name:"Division Sweep",draw:1,tag:"book",d:"Reveals the literary division of the book."},
  {k:"threshold",name:"Chapter Threshold",draw:1,tag:"book",d:"Book has 20 or more chapters, or fewer."},
  {k:"scroll",name:"Scroll Length",draw:1,tag:"book",d:"Short (under 10 chapters), Medium (10 to 29) or Long (30 or more)."},
- {k:"proximity",name:"Proximity Ping",draw:2,tag:"book",input:"book",d:"Pick a book. Hot within 3 books, Warm within 10, Cold beyond."},
+ {k:"proximity",name:"Proximity Ping",draw:2,max:2,tag:"book",input:"book",d:"Pick a book. Hot within 3 books, Warm within 10, Cold beyond."},
  {k:"author",name:"Attribution Check",draw:2,tag:"book",d:"Reveals the traditional author of the book."},
  {k:"tally",name:"Word Tally",draw:2,tag:"verse",d:"Exact word count of the verse."},
- {k:"extract",name:"Word Extract",draw:2,tag:"verse",d:"One content word, chosen by the Hider (filler words are never sent)."},
- {k:"term",name:"Term Sweep",draw:3,tag:"verse",input:"word",precision:true,d:"Enter one word. Yes or No: is it in the verse?"},
- {k:"sector",name:"Sector Lock",draw:3,tag:"chapter",precision:true,d:"Narrows the verse to a 5-chapter block."}
+ {k:"extract",name:"Word Extract",draw:2,max:2,tag:"verse",d:"One content word, chosen by the Hider (filler words are never sent)."},
+ {k:"term",name:"Term Sweep",draw:3,max:2,tag:"verse",input:"word",precision:true,d:"Enter one word. Yes or No: is it in the verse?"},
+ {k:"sector",name:"Sector Lock",draw:3,tag:"chapter",precision:true,d:"Narrows the verse to a 5-chapter block."},
+ {k:"chapterpar",name:"Chapter Parity",draw:1,tag:"chapter",d:"Reveals whether the chapter number is odd or even."},
+ {k:"parity",name:"Verse Parity",draw:1,tag:"verse",d:"Reveals whether the verse number is odd or even."},
+ {k:"first",name:"First Letter",draw:2,tag:"verse",d:"Reveals the first letter of the verse."},
+ {k:"longest",name:"Longest Word",draw:2,tag:"verse",d:"Reveals how many letters the longest word has."},
+ {k:"window",name:"Verse Window",draw:3,tag:"verse",precision:true,d:"Narrows the verse number to a block of 10."}
 ];
 function compute(k,S,input,scr){
   const v=S.verse,b=BOOK(v.book);
@@ -298,6 +303,11 @@ function compute(k,S,input,scr){
    case "author":{let a=b.author;if(scr){for(let n=1;n<BOOKS.length;n++){const x=BOOKS[(b.i+n)%BOOKS.length].author;if(x!==a){a=x;break}}}return "Traditional author: "+a+"."}
    case "tally":{let n=wordCount(v.text);if(scr)n=n+1;return "The verse has "+n+" words."}
    case "term":{let yes=containsWord(v.text,input);if(scr)yes=!yes;return "“"+input+"”: "+(yes?"YES":"NO")+"."}
+   case "chapterpar":{const odd=scr?v.ch%2===0:v.ch%2===1;return "The chapter number is "+(odd?"odd":"even")+"."}
+   case "parity":{const odd=scr?v.v%2===0:v.v%2===1;return "The verse number is "+(odd?"odd":"even")+"."}
+   case "first":{let L=(v.text.match(/[A-Za-z]/)||["A"])[0].toUpperCase();if(scr)L=String.fromCharCode((L.charCodeAt(0)-64)%26+65);return "The verse starts with the letter "+L+"."}
+   case "longest":{let n=Math.max(...tokens(v.text).map(t=>t.replace(/[^A-Za-z]/g,"").length));if(scr)n=n+1;return "The longest word has "+n+" letters."}
+   case "window":{let lo=Math.floor((v.v-1)/10)*10+1;if(scr)lo=lo>10?lo-10:lo+10;return "The verse number is between "+lo+" and "+(lo+9)+"."}
    case "sector":{const blocks=Math.ceil(b.ch/5);let bl=Math.ceil(v.ch/5);if(scr&&blocks>1)bl=bl>1?bl-1:bl+1;
      const a=(bl-1)*5+1,e=Math.min(bl*5,b.ch);return a===e?"Chapter "+a+".":"Chapters "+a+"–"+e+"."}
   }
@@ -353,7 +363,13 @@ function chalHit(S,c,ref){
   if(d.refs.some(s=>{const m=s.match(/^(.+?) (\d+):(\d+)(?:-(\d+))?$/);return m[1]===ref.book&&+m[2]===ref.ch&&ref.v>=+m[3]&&ref.v<=+(m[4]||m[3])}))return true;
   const t=textFor(S,ref.book,ref.ch,ref.v);return !!t&&d.kw.some(w=>containsWord(t.text,w));
 }
-function rerollOptions(k,S){const ab=HUNTER_ABILITIES.find(a=>a.k===k);return HUNTER_ABILITIES.filter(a=>a.tag===ab.tag&&a.k!==k&&!a.input&&!(S&&S.spent&&S.spent[a.k])).map(a=>a.k)}
+function clearChallenge(S,ref,how){const c=S.challenge;if(!c)return;S.challenge=null;addLog(S,{kind:"ok",tag:"meta",title:CH_LABEL[c.type]+" cleared",text:refStr(ref)+" matched “"+c.choice+"”"+(how?" ("+how+")":"")+". Questions are open again."})}
+function submitReview(S,ref,text){const c=S.challenge;if(!c)return;if(c.review)throw GE("Waiting for the Hider to check your last verse.");
+  c.review={book:ref.book,ch:ref.ch,v:ref.v,text:text||""};addLog(S,{kind:"event",tag:"meta",title:CH_LABEL[c.type]+" • "+refStr(ref),text:"The app could not confirm this match. Waiting for the Hider to check it."})}
+function resolveReview(S,accept){const c=S.challenge;if(!c||!c.review)return;const r=c.review;
+  if(accept)clearChallenge(S,r,"accepted by the Hider");
+  else{c.review=null;addLog(S,{kind:"bad",tag:"meta",title:CH_LABEL[c.type]+" • "+refStr(r),text:"The Hider rejected this verse. Hunters can try another."})}}
+function rerollOptions(k,S){const ab=HUNTER_ABILITIES.find(a=>a.k===k);return HUNTER_ABILITIES.filter(a=>a.tag===ab.tag&&a.k!==k&&!a.input&&!(S&&S.spent&&(S.spent[a.k]||0)>=(a.max||1))).map(a=>a.k)}
 function buildDeck(){let n=0;const d=[];for(const c of CARDS)for(let i=0;i<c.copies;i++)d.push({id:"c"+(++n),k:c.k});return shuffle(d)}
 function drawCards(S,n){let got=0;for(let i=0;i<n;i++){if(!S.deck.length){S.deck=shuffle(S.discard);S.discard=[]}if(!S.deck.length)break;S.hand.push(S.deck.pop());got++}return got}
 function needDiscard(S){return Math.max(0,S.hand.length-S.handLimit)}
@@ -386,10 +402,12 @@ function answerPending(S,now,auto,word){
   if(p.k==="extract"){
     let w=word;
     if(w){if(!eligibleWords(S.verse.text).some(x=>x.toLowerCase()===w.toLowerCase()))throw GE("That word is not eligible to send.")}
-    else w=defaultWord(S.verse.text);
+    else w=defaultWord(S.verse.text,S.sentWords);
+    if(word&&(S.sentWords||[]).includes(w.toLowerCase()))throw GE("You already sent that word. Pick a different one.");
+    S.sentWords=S.sentWords||[];S.sentWords.push(w.toLowerCase());
     text="The Hider sent the word: “"+(scr?scrambleWord(w):w)+"”."+(word?"":" (default word)");
   }else text=compute(p.k,S,p.input,scr);
-  S.scrambleArmed=false;S.pending=null;S.spent=S.spent||{};S.spent[p.k]=true;S.qCount=(S.qCount||0)+1;
+  S.scrambleArmed=false;S.pending=null;S.spent=S.spent||{};S.spent[p.k]=(S.spent[p.k]||0)+1;S.qCount=(S.qCount||0)+1;
   addLog(S,{kind:"clue",tag:ab.tag,title:ab.name+(p.k==="proximity"||p.k==="term"?" • "+p.input:"")+(p.rerolled?" (rerolled)":""),text,scrambled:scr});
   if(!auto){const n=drawCards(S,ab.draw);addLog(S,{kind:"event",tag:"meta",vis:"hider",title:"Cards drawn",text:"You drew "+n+" card"+(n===1?"":"s")+" for answering."})}
 }
@@ -461,7 +479,7 @@ function normalize(S,now){
 }
 function newRoom(code,hostId,name,role){
   return{code,rev:1,status:"lobby",hostId,translation:"NKJV",nkjv:{},players:{[hostId]:{name,role}},verse:null,
-    handLimit:HAND_LIMIT,hand:[],deck:[],discard:[],pending:null,challenge:null,abilityLock:{},spent:{},blocked:{},qCount:0,ruleLock:0,endsAt:0,
+    handLimit:HAND_LIMIT,hand:[],deck:[],discard:[],pending:null,challenge:null,abilityLock:{},spent:{},blocked:{},sentWords:[],qCount:0,ruleLock:0,endsAt:0,
     cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,falseLead:null,log:[],winner:null,reason:""}
 }
 function textFor(S,book,ch,v){const k=book+"|"+ch+"|"+v;if(S.translation==="NKJV"&&S.nkjv&&S.nkjv[k])return{text:S.nkjv[k],src:"NKJV"};
@@ -485,7 +503,7 @@ function finalizeFalseLead(S,typed,auto){
 function soloStart(S,now){
   const pool=SAMPLE.filter(x=>!(S.verse&&x.book===S.verse.book&&x.ch===S.verse.ch&&x.v===S.verse.v));
   const x=pool[Math.floor(Math.random()*pool.length)],t=textFor(S,x.book,x.ch,x.v);
-  Object.assign(S,{verse:{book:x.book,ch:x.ch,v:x.v,text:t.text,src:t.src},status:"playing",hand:[],deck:buildDeck(),discard:[],handLimit:HAND_LIMIT,pending:null,challenge:null,abilityLock:{},spent:{},blocked:{},qCount:0,ruleLock:0,endsAt:now+45*60000,cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,falseLead:null,log:[],winner:null,reason:"",botNext:now+30000});
+  Object.assign(S,{verse:{book:x.book,ch:x.ch,v:x.v,text:t.text,src:t.src},status:"playing",hand:[],deck:buildDeck(),discard:[],handLimit:HAND_LIMIT,pending:null,challenge:null,abilityLock:{},spent:{},blocked:{},sentWords:[],qCount:0,ruleLock:0,endsAt:now+45*60000,cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,falseLead:null,log:[],winner:null,reason:"",botNext:now+30000});
   drawCards(S,START_HAND);
   addLog(S,{kind:"event",tag:"meta",title:"Solo round started",text:"The Computer hides a verse and holds "+START_HAND+" cards. You have 45 minutes."});
 }
@@ -495,6 +513,7 @@ function botStep(S,now){
   try{
     const need=needDiscard(S);
     if(need>0){discardCards(S,S.hand.slice(0,need).map(c=>c.id));return true}
+    if(S.challenge&&S.challenge.review){resolveReview(S,!S.challenge.review.text);return true}
     if(S.falseLead&&S.falseLead.pending){finalizeFalseLead(S,[],true);return true}
     const has=k=>S.hand.find(c=>c.k===k);
     const spare=(id,n)=>{const o=S.hand.filter(c=>c.id!==id).slice(0,n).map(c=>c.id);return o.length===n?o:null};
@@ -548,7 +567,7 @@ const Net={
     }catch(e){console.error(e)}
     render()})();return this.ready},
   lkey:c=>"vh.room."+c,
-  fix(S){if(!S)return null;["log","hand","deck","discard"].forEach(k=>{S[k]=S[k]||[]});S.nkjv=S.nkjv||{};S.players=S.players||{};S.abilityLock=S.abilityLock||{};S.spent=S.spent||{};S.blocked=S.blocked||{};
+  fix(S){if(!S)return null;["log","hand","deck","discard"].forEach(k=>{S[k]=S[k]||[]});S.nkjv=S.nkjv||{};S.players=S.players||{};S.abilityLock=S.abilityLock||{};S.spent=S.spent||{};S.sentWords=S.sentWords||[];S.blocked=S.blocked||{};
     S.pending=S.pending||null;S.challenge=S.challenge||null;S.falseLead=S.falseLead||null;S.handLimit=S.handLimit||HAND_LIMIT;
     if(S.falseLead){S.falseLead.decoys=S.falseLead.decoys||[];S.falseLead.options=S.falseLead.options||[]}return S},
   async get(code){
@@ -634,7 +653,7 @@ function landing(){
   <section class="card"><h2>Play solo</h2><p class="hint">You are the Hunter. The Computer hides a verse, answers your investigations, draws cards and plays Hider cards against you. 45 minute limit.</p>
    <button class="btn" data-act="solo">Play solo against the Computer</button></section>
   <section class="card"><h2>How a round works</h2>
-   <p>The Hider secretly picks a verse and holds a hand of up to 6 tactical cards. Hunters can ask each question once per round (a blocked question can be asked again after another one is answered). Each time the Hider answers an investigation, the Hider draws cards. Hunters win by naming the exact book, chapter and verse. The Hider wins when the round timer runs out.</p>
+   <p>The Hider secretly picks a verse and holds a hand of up to 6 tactical cards. Hunters can ask each question once per round, and a few specific ones twice (a blocked question can be asked again after another one is answered). Each time the Hider answers an investigation, the Hider draws cards. Hunters win by naming the exact book, chapter and verse. The Hider wins when the round timer runs out.</p>
    <p class="hint">${A.mode==="cloud"?"Rooms sync live across devices.":"Firebase is not set up yet, so rooms only sync between tabs of this browser. See the README."}</p></section>`;
 }
 function pairingCard(S){
@@ -729,6 +748,12 @@ function popups(S,now,role){
       out+=`<div class="pop" role="dialog" aria-label="Question"><div class="row head"><div><div class="hint">QUESTION</div><div class="big">${esc(title)}</div></div><button class="btn ghost sm" data-act="pop-min" data-key="${key}">Minimize</button></div>${body}</div>`;
     }
   }
+  const rv=role==="hider"&&S.challenge&&S.challenge.review;
+  if(rv){const key="r"+rv.book+rv.ch+rv.v+S.challenge.expiresAt,t=CH_LABEL[S.challenge.type]+": "+S.challenge.choice;
+    if(A.min[key])out+=`<button class="chip" data-act="pop-open" data-key="${key}">Verse to check: ${esc(refStr(rv))} · open</button>`;
+    else out+=`<div class="pop" role="dialog" aria-label="Check verse"><div class="row head"><div><div class="hint">CHECK THIS VERSE</div><div class="big">${esc(refStr(rv))}</div></div><button class="btn ghost sm" data-act="pop-min" data-key="${key}">Minimize</button></div>
+      <p class="hint">Hunters answered ${esc(t)}. The app could not confirm it.</p>${rv.text?`<div class="verse" style="font-size:15px">${esc(rv.text)}</div>`:`<p class="hint">The verse text could not be loaded. Check your Bible.</p>`}
+      <div class="row"><button class="btn sm" data-act="rv-accept">Accept</button><button class="btn ghost sm" data-act="rv-reject">Reject</button></div></div>`}
   const c=clues.find(e=>!A.dis[e.id]);
   if(c)out+=`<div class="pop" role="dialog" aria-label="Answer"><div class="row head"><div><div class="hint">ANSWER</div><div class="big">${esc(c.title)}</div></div><button class="btn ghost sm" data-act="pop-dis" data-id="${c.id}">Minimize to log</button></div><p>${esc(c.text)}</p>${c.scrambled&&role==="hider"?`<span class="pill warn">scrambled</span>`:""}</div>`;
   return out?`<div class="pops">${out}</div>`:"";
@@ -741,18 +766,18 @@ function hunterView(){
     const tag=qs==="used"?`<span class="pill">Asked</span>`:qs==="blocked"?`<span class="pill warn">Blocked</span>`:`<span class="draw" tabindex="0" role="note" aria-label="Hider draws ${ab.draw} card${ab.draw>1?"s":""} when answering" data-tip="The Hider draws ${ab.draw} card${ab.draw>1?"s":""} when they answer this question. Bigger questions give the Hider more.">${"<i class=\"mc\"></i>".repeat(ab.draw)}<b>+${ab.draw}</b></span>`;
     const note=qs==="blocked"?`<p class="hint">Blocked by the Hider. Get a different question answered, then ask this one again.</p>`:"";
     return `<div class="ab${qs==="used"?" used":""}"><div class="h"><span class="n"><span class="ic" aria-hidden="true">${IC[ab.k]}</span>${esc(ab.name)}</span></div><p>${esc(ab.d)}</p>${note}
-      <div class="ft">${tag}<button class="btn sm" data-act="use" data-k="${ab.k}" ${blocked?"disabled":""}>${qs==="used"?"Asked":qs==="blocked"?"Blocked":ab.input?"Ask…":"Ask"}</button></div></div>`}).join("");
+      <div class="ft">${tag}${ab.max>1&&qs!=="used"?`<span class="pill">${ab.max-(S.spent[ab.k]||0)} of ${ab.max} left</span>`:""}<button class="btn sm" data-act="use" data-k="${ab.k}" ${blocked?"disabled":""}>${qs==="used"?"Asked":qs==="blocked"?"Blocked":ab.input?"Ask…":"Ask"}</button></div></div>`}).join("");
   const banners=[];
   if(S.cooldownUntil>now)banners.push(`<div class="banner bad"><strong>Cooldown</strong><span>No guesses or questions for <span class="mono" data-cd="${S.cooldownUntil}">${fmt(S.cooldownUntil-now)}</span>.</span></div>`);
-  if(ch)banners.push(`<div class="banner"><strong>${esc(CH_LABEL[ch.type])}: ${esc(ch.choice)}</strong><span>${esc(CH_ASK[ch.type])} Questions are paused until you clear it, or after <span class="mono" data-cd="${ch.expiresAt}">${fmt(ch.expiresAt-now)}</span>.</span>
-    <div class="row"><input id="ch-ans" placeholder="e.g. Genesis 8:11" value="${esc(dv("ch-ans"))}"><button class="btn sm" data-act="ch-submit">Submit reference</button></div></div>`);
+  if(ch)banners.push(`<div class="banner"><strong>${esc(CH_LABEL[ch.type])}: ${esc(ch.choice)}</strong><span>${esc(CH_ASK[ch.type])} Questions are paused until you clear it, or after <span class="mono" data-cd="${ch.expiresAt}">${fmt(ch.expiresAt-now)}</span>.${ch.review?` <strong>${esc(ch.review.ref)} is waiting for the Hider to review.</strong>`:""}</span>
+    ${ch.review?`<span class="hint"><span class="pill warn">checking</span> Waiting for the Hider to check ${esc(refStr(ch.review))}.</span>`:`<div class="row"><input id="ch-ans" placeholder="e.g. Genesis 8:11" value="${esc(dv("ch-ans"))}"><button class="btn sm" data-act="ch-submit" ${A.flags.chk?"disabled":""}>${A.flags.chk?"Checking…":"Submit reference"}</button></div><span class="hint">If the app cannot confirm the verse, the Hider gets to check it.</span>`}</div>`);
   if(fl&&S.falseLead.pending)banners.push(`<div class="banner"><strong>False Lead incoming: Term Sweep and Sector Lock blocked</strong><span>The Hider is choosing decoys. They arrive within <span class="mono" data-cd="${S.falseLead.expiresAt}">${fmt(S.falseLead.expiresAt-now)}</span>.</span></div>`);
   else if(fl)banners.push(`<div class="banner"><strong>False Lead: Term Sweep and Sector Lock blocked</strong><span>Three candidate verses were sent in. Two are decoys. Rule one out to unlock them. A wrong pick locks this for 1 minute.</span>
     <div class="row">${S.falseLead.options.map((o,i)=>`<button class="btn ghost sm" data-act="decoy" data-i="${i}">Rule out ${esc(o.book+" "+o.ch+":"+o.v)}</button>`).join("")}</div></div>`);
   if(off)banners.push(`<div class="banner bad"><strong>Offline Protocol</strong><span>Bibles away: no looking up verses or searching for <span class="mono" data-cd="${S.offlineUntil}">${fmt(S.offlineUntil-now)}</span>.</span></div>`);
   const left=`<section class="card hot">${statsHtml(S,now,"hunter")}</section>
    <section class="card"><button class="btn" data-act="drawer" ${S.status!=="playing"?"disabled":""}>Final Guess</button><p class="hint">Exact book, chapter and verse wins.</p></section>`;
-  const mid=`${banners.join("")}<section class="card"><h2>Recon deck</h2><p class="hint">Each question can be asked once per round. If the Hider blocks one, you can ask it again after a different question is answered. The <span class="draw" style="padding:1px 7px;cursor:default"><i class="mc"></i><b>+1</b></span> badge shows how many cards the Hider draws for answering.</p><div class="grid">${cards}</div></section>`;
+  const mid=`${banners.join("")}<section class="card"><h2>Recon deck</h2><p class="hint">Each question can be asked once per round; a few specific ones can be asked twice. If the Hider blocks one, you can ask it again after a different question is answered. The <span class="draw" style="padding:1px 7px;cursor:default"><i class="mc"></i><b>+1</b></span> badge shows how many cards the Hider draws for answering.</p><div class="grid">${cards}</div></section>`;
   return header()+cols(left,mid,"hunter");
 }
 function optSel(id,vals,labelFn){return `<select id="ch-${id}" aria-label="Choose">${`<option value="">Choose</option>`+vals.map(v=>`<option value="${esc(v)}"${dv("ch-"+id)===v?" selected":""}>${esc(labelFn?labelFn(v):v)}</option>`).join("")}</select>`}
@@ -779,7 +804,7 @@ function hiderView(){
   const sel=A.flags.dsel||{};
   const ext=p&&p.k==="extract";
   const words=v.text.split(/\s+/).map(w=>{const t=tokens(w);const core=t.length?t.join("-"):"";const ok=core&&isEligible(core)&&eligibleWords(v.text).some(x=>x.toLowerCase()===core.toLowerCase());
-    return ext&&ok?`<button class="w ok" data-act="send-word" data-w="${esc(core)}" ${need?"disabled":""}>${esc(w)}</button>`:`<span class="w${ok?" ok":""}" style="${ok?"cursor:default":""}">${esc(w)}</span>`}).join(" ");
+    return ext&&ok&&!(S.sentWords||[]).includes(core.toLowerCase())?`<button class="w ok" data-act="send-word" data-w="${esc(core)}" ${need?"disabled":""}>${esc(w)}</button>`:`<span class="w${ok?" ok":""}" style="${ok?"cursor:default":""}">${esc(w)}</span>`}).join(" ");
   const decoyPick=[1,2].map(n=>`<input id="fl-d${n}" placeholder="Decoy ${n}, e.g. John 3:16 (blank = auto)" value="${esc(dv("fl-d"+n))}" aria-label="Decoy ${n}">`).join("");
   const hasShift=S.hand.some(c=>c.k==="shift")&&!S.shifted;
   const left=`<section class="card hot">${statsHtml(S,now,"hider")}</section>
@@ -838,6 +863,7 @@ function settingsCard(){
   return `<div class="modal" data-act="close-modal-bg"><div class="card"><div class="row" style="justify-content:space-between"><h2>Settings</h2><button class="btn ghost sm" data-act="close-modal">Close</button></div>
    <label>Callsign<input id="st-name" value="${esc(name)}" maxlength="20"></label>
    <label>Theme<select id="st-theme"><option value="auto"${th==="auto"?" selected":""}>Match my device</option><option value="light"${th==="light"?" selected":""}>Light</option><option value="dark"${th==="dark"?" selected":""}>Dark</option></select></label>
+   <label>Display<div class="row"><button class="btn ghost sm" data-act="st-full">${document.fullscreenElement?"Exit full screen":"Enter full screen"}</button></div>${document.fullscreenEnabled?"":`<span class="hint" style="text-transform:none;letter-spacing:0;font-weight:400">Full screen is not available in this browser. On iPhone or iPad, use Share, then Add to Home Screen.</span>`}</label>
    <div class="row"><button class="btn sm" data-act="st-save">Save</button></div>
    <p class="hint">Sync: ${sync}.${S?" Translation: "+esc(S.translation)+".":""}</p>
    <h3>About</h3>
@@ -896,6 +922,8 @@ const H={
     if(name){A.drafts["j-name"]=name;A.drafts["h-name"]=name;try{localStorage.setItem("vh.name",name)}catch(e){}
       if(A.S&&A.S.players[A.me])act(S=>{if(S.players[A.me])S.players[A.me].name=name})}
     A.modal=null;render();toast("Settings saved.")},
+  "st-full"(){const d=document;if(!d.fullscreenEnabled){toast("Full screen is not available in this browser.");return}
+    (d.fullscreenElement?d.exitFullscreen():d.documentElement.requestFullscreen()).catch(()=>toast("Could not change full screen."))},
   "st-copy"(){const t="crosscodeministry@gmail.com";(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast("Email copied."),()=>toast(t))},
   pair(){A.modal="pair";render()},"close-modal"(){A.modal=null;A.choice=null;render()},
   "copy-link"(){const el=document.getElementById("join-url");const t=el.value;
@@ -916,10 +944,10 @@ const H={
     try{await Net.put(S)}catch(e){toast("Could not start a solo game.");return}
     A.S=S;A.code=code;A.flags.dsel={};Net.sub(code,onRemote);render()},
   start(){const tl=parseInt(dv("tl-sel","60"),10)||0;act((S,now)=>{if(S.hostId!==A.me)throw GE("Only the host can start.");if(!hiderId(S)||!S.verse)throw GE("The Hider needs a locked verse.");if(!hunterIds(S).length)throw GE("Need at least one Hunter.");
-    Object.assign(S,{status:"playing",hand:[],deck:buildDeck(),discard:[],handLimit:HAND_LIMIT,pending:null,challenge:null,abilityLock:{},spent:{},blocked:{},qCount:0,ruleLock:0,endsAt:tl>0?now+tl*60000:0,cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,falseLead:null,log:[],winner:null,reason:""});
+    Object.assign(S,{status:"playing",hand:[],deck:buildDeck(),discard:[],handLimit:HAND_LIMIT,pending:null,challenge:null,abilityLock:{},spent:{},blocked:{},sentWords:[],qCount:0,ruleLock:0,endsAt:tl>0?now+tl*60000:0,cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,falseLead:null,log:[],winner:null,reason:""});
     drawCards(S,START_HAND);A.flags.dsel={};
     addLog(S,{kind:"event",tag:"meta",title:"Round started",text:"The Hider holds "+START_HAND+" cards (limit "+HAND_LIMIT+")."+(tl>0?" Time limit: "+tl+" minutes.":"")})})},
-  again(){act((S,now)=>{if(S.hostId!==A.me)throw GE("Only the host can reset.");if(S.solo){soloStart(S,now);A.flags.dsel={};return}Object.assign(S,{status:"lobby",verse:null,log:[],winner:null,reason:"",pending:null,challenge:null,falseLead:null,scrambleArmed:false,shifted:0,cooldownUntil:0,offlineUntil:0,hand:[],deck:[],discard:[],abilityLock:{},spent:{},blocked:{},qCount:0,ruleLock:0,endsAt:0});A.flags.dsel={}})},
+  again(){act((S,now)=>{if(S.hostId!==A.me)throw GE("Only the host can reset.");if(S.solo){soloStart(S,now);A.flags.dsel={};return}Object.assign(S,{status:"lobby",verse:null,log:[],winner:null,reason:"",pending:null,challenge:null,falseLead:null,scrambleArmed:false,shifted:0,cooldownUntil:0,offlineUntil:0,hand:[],deck:[],discard:[],abilityLock:{},spent:{},blocked:{},sentWords:[],qCount:0,ruleLock:0,endsAt:0});A.flags.dsel={}})},
   use(b){const k=b.dataset.k;const ab=HUNTER_ABILITIES.find(a=>a.k===k);if(ab.input&&!b.dataset.go){A.choice={k};render();return}const input=ab.input==="book"?dv("in-prox"):ab.input==="word"?dv("in-term"):null;act((S,now)=>{hunterUse(S,now,k,input);A.choice=null})},
   guess(){const b=dv("g-book"),c=dv("g-c"),v=dv("g-v");act((S,now)=>{hunterGuess(S,now,b,c,v);A.drawer=false})},
   decoy(b){const i=+b.dataset.i;act((S,now)=>{const fl=S.falseLead;if(!fl||fl.cleared||fl.pending)return;
@@ -927,10 +955,28 @@ const H={
     const o=fl.options[i];const isDecoy=fl.decoys.some(d=>d.book===o.book&&d.ch===o.ch&&d.v===o.v);
     if(isDecoy){fl.cleared=true;addLog(S,{kind:"ok",tag:"meta",title:"False Lead cleared",text:refStr(o)+" was a decoy. Term Sweep and Sector Lock are unlocked."})}
     else{S.ruleLock=now+RULE_MS;addLog(S,{kind:"bad",tag:"meta",title:"False Lead",text:refStr(o)+" was not a decoy. Ruling out is locked for 1 minute."})}})},
-  "ch-submit"(){const ref=parseRef(dv("ch-ans"));if(!ref){toast("Write a reference like “Genesis 8:11”.");return}
-    act(S=>{const c=S.challenge;if(!c)return;
-      if(chalHit(S,c,ref)){S.challenge=null;A.drafts["ch-ans"]="";addLog(S,{kind:"ok",tag:"meta",title:CH_LABEL[c.type]+" cleared",text:refStr(ref)+" matched “"+c.choice+"”. Investigations are open again."})}
-      else throw GE(refStr(ref)+" does not match “"+c.choice+"”. Try another verse.")})},
+  "rv-accept"(){act(S=>resolveReview(S,true))},
+  "rv-reject"(){act(S=>resolveReview(S,false))},
+  async "ch-submit"(){
+    const ref=parseRef(dv("ch-ans"));if(!ref){toast("Write a reference like “Genesis 8:11”.");return}
+    const S0=A.S,c0=S0.challenge;if(!c0)return;
+    if(c0.review){toast("Waiting for the Hider to check your last verse.");return}
+    const clear=how=>{A.drafts["ch-ans"]="";act(S=>clearChallenge(S,ref,how))};
+    if(chalHit(S0,c0,ref)){clear("");return}
+    if(c0.type==="era"){toast(refStr(ref)+" is not in “"+c0.choice+"”. Try another verse.");return}
+    A.flags.chk=true;render();
+    let text="",bad=false;
+    try{const loc=textFor(S0,ref.book,ref.ch,ref.v);
+      if(loc)text=loc.text;
+      else{const res=await fetch("https://bible-api.com/"+encodeURIComponent(ref.book+" "+ref.ch+":"+ref.v)+"?translation=kjv");
+        if(res.status===404)bad=true;else if(res.ok){const j=await res.json();text=String(j.text||"").replace(/\s+/g," ").trim()}}
+    }catch(e){}
+    A.flags.chk=false;
+    if(bad){render();toast(refStr(ref)+" does not exist. Try another verse.");return}
+    const d=(CH_POOL[c0.type]||{})[c0.choice];
+    if(text&&d&&d.kw.some(w=>containsWord(text,w))){clear("verified from the verse text");return}
+    A.drafts["ch-ans"]="";act(S=>submitReview(S,ref,text));
+  },
   lookup(){const book=dv("lk-book"),c=parseInt(dv("lk-c"),10),v=parseInt(dv("lk-v"),10);
     if(Date.now()<view().offlineUntil){toast("Locked by Offline Protocol.");return}
     const t=BOOK(book)?textFor(A.S,book,c,v):null;A.flags.toolOut=t?book+" "+c+":"+v+" — "+t.text:"Not in the built-in verse set.";render()},
@@ -972,6 +1018,7 @@ document.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(
   if(b.dataset.act==="close-modal-bg"&&e.target!==b)return;
   const f=H[b.dataset.act==="close-modal-bg"?"close-modal":b.dataset.act];if(f)f(b)});
 
+document.addEventListener("fullscreenchange",()=>{if(A.modal==="settings")render()});
 /* ---------- clock ---------- */
 setInterval(()=>{
   const now=Date.now();
