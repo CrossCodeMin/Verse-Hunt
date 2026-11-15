@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Verse Hunt</title>
+<meta name="author" content="CrossCode Ministry">
+<!-- © 2026 CrossCode Ministry. All rights reserved. crosscodeministry@gmail.com -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{color-scheme:light;padding-block:env(safe-area-inset-top,0px) env(safe-area-inset-bottom,0px)}
+body{margin:0} img{max-width:100%} [hidden]{display:none!important}
+</style>
+<style>
+/* Layout: one column command console. Header strip (name, badges, room), role-colored deck, clue log. Hunters run cobalt, the Hider runs amber. */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --surface2:#e4e9ee; --ink:#0f1a24; --mute:#526070; --line:#c3ccd6;
+  --hunter:#0b63ce; --on-hunter:#ffffff; --hider:#a85500; --on-hider:#ffffff;
+  --ok:#12794a; --bad:#b3261e; --warn:#8a5a00; --role:var(--hunter); --on-role:var(--on-hunter);
+  --f-display:"Barlow Condensed","Arial Narrow",sans-serif; --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0c141c; --surface:#142130; --surface2:#1c2d40; --ink:#eaf1f8; --mute:#9fb0c1; --line:#2c3e52;
+  --hunter:#5aa9ff; --on-hunter:#07111b; --hider:#ffb04a; --on-hider:#1a1000;
+  --ok:#4cd08a; --bad:#ff8077; --warn:#f0c15a; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#0c141c; --surface:#142130; --surface2:#1c2d40; --ink:#eaf1f8; --mute:#9fb0c1; --line:#2c3e52;
+  --hunter:#5aa9ff; --on-hunter:#07111b; --hider:#ffb04a; --on-hider:#1a1000;
+  --ok:#4cd08a; --bad:#ff8077; --warn:#f0c15a; color-scheme:dark;}
+body[data-role="hider"]{--role:var(--hider);--on-role:var(--on-hider)}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45;
+  padding-block:0 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1,h2,h3{font-family:var(--f-display);text-transform:uppercase;letter-spacing:.06em;margin:0;line-height:1.1;text-wrap:balance}
+h2{font-size:22px} h3{font-size:17px;color:var(--mute)}
+p{margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--role);outline-offset:2px}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:2px solid var(--line);padding:10px 0;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--bg);z-index:10}
+.brand{font-family:var(--f-display);font-weight:700;font-size:26px;letter-spacing:.12em;text-transform:uppercase}
+.brand small{font-size:13px;letter-spacing:.1em;color:var(--mute);margin-left:8px;font-weight:600}
+.badges{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.badge{font-family:var(--f-mono);font-size:12px;font-weight:600;border:1.5px solid var(--line);border-radius:4px;padding:3px 8px;background:var(--surface);white-space:nowrap}
+.badge.role{border-color:var(--role);color:var(--role)}
+.badge.warn{border-color:var(--warn);color:var(--warn)}
+.card{background:var(--surface);border:1.5px solid var(--line);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card.hot{border-color:var(--role)}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.row>*{min-width:0}
+.split{display:grid;gap:16px;grid-template-columns:1fr}
+@media(min-width:820px){.split{grid-template-columns:1.5fr 1fr}.split.even{grid-template-columns:1fr 1fr}}
+.btn{background:var(--role);color:var(--on-role);border:0;border-radius:4px;padding:9px 14px;font-weight:600;cursor:pointer;min-height:40px}
+.btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+.btn.ghost:hover{border-color:var(--role)}
+.btn.bad{background:var(--bad);color:var(--surface)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.sm{padding:5px 10px;min-height:32px;font-size:13px}
+input,select,textarea{background:var(--surface);border:1.5px solid var(--line);border-radius:4px;padding:8px 10px;min-height:40px;max-width:100%}
+textarea{width:100%;min-height:80px;resize:vertical}
+label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);font-weight:600;display:flex;flex-direction:column;gap:4px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.ap{font-family:var(--f-mono);font-size:34px;font-weight:600;line-height:1;color:var(--role)}
+.stats{display:flex;flex-wrap:wrap;gap:12px 28px}
+.stat{display:flex;flex-direction:column;gap:2px}
+.stat span.l{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--mute);font-weight:600}
+.stat .v{font-family:var(--f-mono);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.ab{border:1.5px solid var(--line);border-radius:6px;padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--surface)}
+.ab .h{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.ab .n{font-family:var(--f-display);text-transform:uppercase;letter-spacing:.05em;font-size:18px;font-weight:600}
+.cost{font-family:var(--f-mono);font-size:13px;font-weight:600;border:1.5px solid var(--role);color:var(--role);border-radius:4px;padding:1px 6px;white-space:nowrap}
+.ab p{font-size:13px;color:var(--mute)}
+.banner{border:1.5px solid var(--warn);border-left-width:6px;border-radius:4px;padding:10px 12px;background:var(--surface);display:flex;flex-direction:column;gap:8px}
+.banner.bad{border-color:var(--bad)} .banner.ok{border-color:var(--ok)}
+.log{display:flex;flex-direction:column;gap:8px;max-height:520px;overflow-y:auto}
+.entry{border-left:4px solid var(--line);padding:6px 10px;background:var(--surface2);border-radius:0 4px 4px 0}
+.entry.clue{border-color:var(--role)} .entry.bad{border-color:var(--bad)} .entry.ok{border-color:var(--ok)} .entry.event{border-color:var(--warn)}
+.entry .m{font-family:var(--f-mono);font-size:11px;color:var(--mute);display:flex;gap:8px;flex-wrap:wrap}
+.entry .t{font-weight:600}
+.entry.stale .t,.entry.stale .x{text-decoration:line-through;color:var(--mute)}
+.verse{font-size:19px;line-height:1.55;border-left:5px solid var(--role);padding:6px 0 6px 14px}
+.w{display:inline;background:none;border:0;padding:0 1px;font:inherit;color:var(--mute);cursor:default}
+.w.ok{color:var(--ink);background:var(--surface2);border-bottom:2px solid var(--role);cursor:pointer;border-radius:2px;padding:0 3px}
+.w.ok:hover{background:var(--role);color:var(--on-role)}
+.code{font-family:var(--f-mono);font-size:54px;font-weight:600;letter-spacing:.25em;line-height:1}
+.qr{background:#fff;padding:10px;border-radius:6px;width:fit-content}
+.qr canvas,.qr img{display:block}
+.pl{display:flex;flex-direction:column;gap:6px;list-style:none;margin:0;padding:0}
+.pl li{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:4px 0}
+.drawer{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:3px solid var(--role);padding:16px max(16px,env(safe-area-inset-left,0px)) calc(16px + env(safe-area-inset-bottom,0px));box-shadow:0 -8px 30px rgba(0,0,0,.35)}
+.drawer .in{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.modal{position:fixed;inset:0;z-index:30;background:rgba(5,10,16,.72);display:flex;align-items:center;justify-content:center;padding:16px}
+.modal .card{max-width:460px;width:100%;max-height:90vh;overflow:auto}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:6px;z-index:50;max-width:90vw;font-weight:500}
+.win{font-family:var(--f-display);font-size:44px;text-transform:uppercase;letter-spacing:.06em;line-height:1}
+.hint{font-size:13px;color:var(--mute)}
+.pill{font-family:var(--f-mono);font-size:11px;border-radius:3px;padding:1px 6px;border:1px solid var(--line);color:var(--mute);text-transform:uppercase}
+.pill.warn{border-color:var(--warn);color:var(--warn)}
+@media(prefers-reduced-motion:no-preference){.btn{transition:transform .08s}.btn:active:not(:disabled){transform:translateY(1px)}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div id="layer"></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+//#LOGIC-START
+const BOOK_ROWS=`Genesis|50|Law (Pentateuch)|Moses
+Exodus|40|Law (Pentateuch)|Moses
+Leviticus|27|Law (Pentateuch)|Moses
+Numbers|36|Law (Pentateuch)|Moses
+Deuteronomy|34|Law (Pentateuch)|Moses
+Joshua|24|History|Joshua
+Judges|21|History|Samuel (traditional)
+Ruth|4|History|Samuel (traditional)
+1 Samuel|31|History|Samuel, Nathan and Gad (traditional)
+2 Samuel|24|History|Samuel, Nathan and Gad (traditional)
+1 Kings|22|History|Jeremiah (traditional)
+2 Kings|25|History|Jeremiah (traditional)
+1 Chronicles|29|History|Ezra (traditional)
+2 Chronicles|36|History|Ezra (traditional)
+Ezra|10|History|Ezra
+Nehemiah|13|History|Nehemiah
+Esther|10|History|Unknown (possibly Mordecai)
+Job|42|Wisdom & Poetry|Unknown (possibly Moses)
+Psalms|150|Wisdom & Poetry|David and others
+Proverbs|31|Wisdom & Poetry|Solomon
+Ecclesiastes|12|Wisdom & Poetry|Solomon
+Song of Solomon|8|Wisdom & Poetry|Solomon
+Isaiah|66|Prophets|Isaiah
+Jeremiah|52|Prophets|Jeremiah
+Lamentations|5|Prophets|Jeremiah
+Ezekiel|48|Prophets|Ezekiel
+Daniel|12|Prophets|Daniel
+Hosea|14|Prophets|Hosea
+Joel|3|Prophets|Joel
+Amos|9|Prophets|Amos
+Obadiah|1|Prophets|Obadiah
+Jonah|4|Prophets|Jonah
+Micah|7|Prophets|Micah
+Nahum|3|Prophets|Nahum
+Habakkuk|3|Prophets|Habakkuk
+Zephaniah|3|Prophets|Zephaniah
+Haggai|2|Prophets|Haggai
+Zechariah|14|Prophets|Zechariah
+Malachi|4|Prophets|Malachi
+Matthew|28|Gospels & Acts|Matthew
+Mark|16|Gospels & Acts|Mark
+Luke|24|Gospels & Acts|Luke
+John|21|Gospels & Acts|John
+Acts|28|Gospels & Acts|Luke
+Romans|16|Epistles|Paul
+1 Corinthians|16|Epistles|Paul
+2 Corinthians|13|Epistles|Paul
+Galatians|6|Epistles|Paul
+Ephesians|6|Epistles|Paul
+Philippians|4|Epistles|Paul
+Colossians|4|Epistles|Paul
+1 Thessalonians|5|Epistles|Paul
+2 Thessalonians|3|Epistles|Paul
+1 Timothy|6|Epistles|Paul
+2 Timothy|4|Epistles|Paul
+Titus|3|Epistles|Paul
+Philemon|1|Epistles|Paul
+Hebrews|13|Epistles|Unknown (traditionally Paul)
+James|5|Epistles|James
+1 Peter|5|Epistles|Peter
+2 Peter|3|Epistles|Peter
+1 John|5|Epistles|John
+2 John|1|Epistles|John
+3 John|1|Epistles|John
+Jude|1|Epistles|Jude
+Revelation|22|Revelation|John`;
+const BOOKS=BOOK_ROWS.split("\n").map((r,i)=>{const [name,ch,div,author]=r.split("|");return{name,ch:+ch,div,author,ot:i<39,i}});
+const BOOK=n=>BOOKS.find(b=>b.name===n);
+const DIVISIONS=["Law (Pentateuch)","History","Wisdom & Poetry","Prophets","Gospels & Acts","Epistles","Revelation"];
+// Built-in fallback sample set. Text is the public-domain KJV; NKJV text can be imported by the host (it is copyrighted, so it is not bundled).
+const SAMPLE=[
+["Genesis",1,1,"In the beginning God created the heaven and the earth."],
+["Genesis",1,3,"And God said, Let there be light: and there was light."],
+["Genesis",50,20,"But as for you, ye thought evil against me; but God meant it unto good, to bring to pass, as it is this day, to save much people alive."],
+["Exodus",20,3,"Thou shalt have no other gods before me."],
+["Deuteronomy",6,5,"And thou shalt love the LORD thy God with all thine heart, and with all thy soul, and with all thy might."],
+["Joshua",1,9,"Have not I commanded thee? Be strong and of a good courage; be not afraid, neither be thou dismayed: for the LORD thy God is with thee whithersoever thou goest."],
+["Ruth",1,16,"And Ruth said, Intreat me not to leave thee, or to return from following after thee: for whither thou goest, I will go; and where thou lodgest, I will lodge: thy people shall be my people, and thy God my God:"],
+["1 Samuel",16,7,"But the LORD said unto Samuel, Look not on his countenance, or on the height of his stature; because I have refused him: for the LORD seeth not as man seeth; for man looketh on the outward appearance, but the LORD looketh on the heart."],
+["Psalms",23,1,"The LORD is my shepherd; I shall not want."],
+["Psalms",46,10,"Be still, and know that I am God: I will be exalted among the heathen, I will be exalted in the earth."],
+["Psalms",119,105,"Thy word is a lamp unto my feet, and a light unto my path."],
+["Proverbs",3,5,"Trust in the LORD with all thine heart; and lean not unto thine own understanding."],
+["Isaiah",40,31,"But they that wait upon the LORD shall renew their strength; they shall mount up with wings as eagles; they shall run, and not be weary; and they shall walk, and not faint."],
+["Isaiah",53,5,"But he was wounded for our transgressions, he was bruised for our iniquities: the chastisement of our peace was upon him; and with his stripes we are healed."],
+["Jeremiah",29,11,"For I know the thoughts that I think toward you, saith the LORD, thoughts of peace, and not of evil, to give you an expected end."],
+["Micah",6,8,"He hath shewed thee, O man, what is good; and what doth the LORD require of thee, but to do justly, and to love mercy, and to walk humbly with thy God?"],
+["Matthew",5,9,"Blessed are the peacemakers: for they shall be called the children of God."],
+["Matthew",6,33,"But seek ye first the kingdom of God, and his righteousness; and all these things shall be added unto you."],
+["Luke",2,11,"For unto you is born this day in the city of David a Saviour, which is Christ the Lord."],
+["John",3,16,"For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life."],
+["John",11,35,"Jesus wept."],
+["Acts",16,31,"And they said, Believe on the Lord Jesus Christ, and thou shalt be saved, and thy house."],
+["Romans",8,28,"And we know that all things work together for good to them that love God, to them who are the called according to his purpose."],
+["1 Corinthians",13,13,"And now abideth faith, hope, charity, these three; but the greatest of these is charity."],
+["Ephesians",2,8,"For by grace are ye saved through faith; and that not of yourselves: it is the gift of God:"],
+["Philippians",4,13,"I can do all things through Christ which strengtheneth me."],
+["2 Timothy",3,16,"All scripture is given by inspiration of God, and is profitable for doctrine, for reproof, for correction, for instruction in righteousness:"],
+["Hebrews",11,1,"Now faith is the substance of things hoped for, the evidence of things not seen."],
+["James",1,5,"If any of you lack wisdom, let him ask of God, that giveth to all men liberally, and upbraideth not; and it shall be given him."],
+["1 John",4,8,"He that loveth not knoweth not God; for God is love."],
+["Revelation",3,20,"Behold, I stand at the door, and knock: if any man hear my voice, and open the door, I will come in to him, and will sup with him, and he with me."]
+].map(([book,ch,v,text])=>({book,ch,v,text}));
+
+const STOP=new Set(("i a an the and of in to is it he she they them we us you your my me was were be been for with as at by from on or but not that this which who whom so if into out up down "+
+"his her him our their thou thee thy thine ye hath unto shall shalt will have has had are am do did then than there these those also yet").split(" "));
+const PASSIVE_MS=5*60*1000, COOLDOWN_MS=5*60*1000, OFFLINE_MS=5*60*1000, EXTRACT_MS=120*1000, FL_MS=5*60*1000;
+class GameError extends Error{}
+const GE=m=>new GameError(m);
+const clone=o=>JSON.parse(JSON.stringify(o));
+const refStr=v=>v.book+" "+v.ch+":"+v.v;
+const normQ=s=>String(s).replace(/[‘’]/g,"'");
+function tokens(text){return (normQ(text).match(/[A-Za-z0-9']+(?:-[A-Za-z0-9']+)*/g)||[])}
+function wordCount(text){return normQ(text).split(/\s+/).filter(w=>/[A-Za-z0-9]/.test(w)).length}
+function isEligible(w){const k=normQ(w).toLowerCase().replace(/^'+|'+$/g,"");return k.length>=2&&!STOP.has(k)&&!/^[0-9]+$/.test(k)}
+function eligibleWords(text){const seen=new Set(),out=[];for(const t of tokens(text)){const k=t.toLowerCase();if(isEligible(t)&&!seen.has(k)){seen.add(k);out.push(t)}}return out}
+function defaultWord(text){const el=eligibleWords(text);if(el.length)return el[Math.floor(Math.random()*el.length)];
+  return tokens(text).sort((a,b)=>b.length-a.length)[0]||""}
+function containsWord(text,w){const k=normQ(w).toLowerCase().trim();if(!k)return false;
+  for(const t of tokens(text)){const l=t.toLowerCase();if(l===k)return true;if(l.includes("-")&&l.split("-").includes(k))return true}return false}
+function pick(a){return a[Math.floor(Math.random()*a.length)]}
+function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function scrambleWord(w){if(w.length<3)return w;let o=w;for(let i=0;i<6&&o===w;i++)o=shuffle(w.split("")).join("");return o}
+const fmt=ms=>{ms=Math.max(0,Math.ceil(ms/1000));return Math.floor(ms/60)+":"+String(ms%60).padStart(2,"0")};
+
+function tier(d){return d<=3?0:d<=10?1:2}
+const TIERS=["HOT","WARM","COLD"];
+const HUNTER_ABILITIES=[
+ {k:"canon",name:"Canon Split",cost:10,tag:"book",d:"Reveals Old Testament or New Testament."},
+ {k:"division",name:"Division Sweep",cost:10,tag:"book",d:"Reveals the literary division of the book."},
+ {k:"threshold",name:"Chapter Threshold",cost:10,tag:"book",d:"Book has 20 or more chapters, or fewer."},
+ {k:"proximity",name:"Proximity Ping",cost:20,tag:"book",input:"book",d:"Pick a book. Hot within 3 books, Warm within 10, Cold beyond."},
+ {k:"author",name:"Attribution Check",cost:20,tag:"book",d:"Reveals the traditional author of the book."},
+ {k:"tally",name:"Word Tally",cost:20,tag:"verse",d:"Exact word count of the verse."},
+ {k:"extract",name:"Word Extract",cost:25,tag:"verse",d:"One content word, chosen by the Hider (filler words are never sent)."},
+ {k:"term",name:"Term Sweep",cost:35,tag:"verse",input:"word",precision:true,d:"Enter one word. Yes or No: is it in the verse?"},
+ {k:"sector",name:"Sector Lock",cost:35,tag:"chapter",precision:true,d:"Narrows the verse to a 5-chapter block."}
+];
+function compute(k,S,input,scr){
+  const v=S.verse,b=BOOK(v.book);
+  switch(k){
+   case "canon":{const ot=scr?!b.ot:b.ot;return "Target is in the "+(ot?"Old":"New")+" Testament."}
+   case "division":{const d=scr?pick(DIVISIONS.filter(x=>x!==b.div)):b.div;return "Division: "+d+"."}
+   case "threshold":{const big=scr?!(b.ch>=20):b.ch>=20;return big?"The book has 20 or more chapters.":"The book has fewer than 20 chapters."}
+   case "proximity":{const pb=BOOK(input);let t=tier(Math.abs(pb.i-b.i));if(scr)t=t===0?1:t===2?1:pick([0,2]);return pb.name+": "+TIERS[t]+"."}
+   case "author":{const a=scr?pick(BOOKS.map(x=>x.author).filter(x=>x!==b.author)):b.author;return "Traditional author: "+a+"."}
+   case "tally":{let n=wordCount(v.text);if(scr)n=Math.max(1,n+pick([-3,-2,-1,1,2,3]));return "The verse has "+n+" words."}
+   case "term":{let yes=containsWord(v.text,input);if(scr)yes=!yes;return "“"+input+"”: "+(yes?"YES":"NO")+"."}
+   case "sector":{const blocks=Math.ceil(b.ch/5);let bl=Math.ceil(v.ch/5);if(scr&&blocks>1)bl=bl>1?bl-1:bl+1;
+     const a=(bl-1)*5+1,e=Math.min(bl*5,b.ch);return a===e?"Chapter "+a+".":"Chapters "+a+"–"+e+"."}
+  }
+}
+function addLog(S,o){S.log.unshift(Object.assign({id:Math.random().toString(36).slice(2,9),t:Date.now()},o));if(S.log.length>200)S.log.length=200}
+function accrue(S,now){
+  if(S.status!=="playing")return;
+  const n=Math.floor((now-S.apAnchor)/PASSIVE_MS);
+  if(n>0){S.hiderAP+=5*n;S.apAnchor+=n*PASSIVE_MS}
+}
+function resolveExtract(S,word,now){
+  const r=S.extractReq;if(!r)return;
+  let w=word;
+  if(w){if(!eligibleWords(S.verse.text).some(x=>x.toLowerCase()===w.toLowerCase()))throw GE("That word is not eligible to send.")}
+  else w=defaultWord(S.verse.text);
+  const out=r.scrambled?scrambleWord(w):w;
+  S.extractReq=null;
+  addLog(S,{kind:"clue",tag:"verse",title:"Word Extract",text:"The Hider sent the word: “"+out+"”."+(word?"":" (auto-selected)"),scrambled:!!r.scrambled});
+}
+function normalize(S,now){
+  accrue(S,now);
+  if(S.status==="playing"&&S.extractReq&&now>=S.extractReq.expiresAt)resolveExtract(S,null,now);
+  if(S.status==="playing"&&S.falseLead&&S.falseLead.pending&&now>=S.falseLead.expiresAt)finalizeFalseLead(S,[],true);
+}
+function guardHunterSpend(S,now,cost){
+  if(S.status!=="playing")throw GE("The round is not active.");
+  if(now<S.cooldownUntil)throw GE("Cooldown active: "+fmt(S.cooldownUntil-now)+" left.");
+  if(S.fieldTask&&S.fieldTask.active)throw GE("Field Task active: AP spending is paused.");
+  if(S.hunterAP-cost<1)throw GE("Not enough AP. Hunters must keep at least 1 AP.");
+}
+function hunterUse(S,now,k,input){
+  const ab=HUNTER_ABILITIES.find(a=>a.k===k);
+  guardHunterSpend(S,now,ab.cost);
+  if(ab.precision&&S.falseLead&&!S.falseLead.cleared)throw GE("Blocked by False Lead. Rule out a decoy first.");
+  if(k==="proximity"&&!BOOK(input))throw GE("Choose a book first.");
+  if(k==="term"){input=String(input||"").trim();if(!/^[A-Za-z']+(-[A-Za-z']+)?$/.test(normQ(input)))throw GE("Enter a single word.")}
+  if(k==="extract"&&S.extractReq)throw GE("A Word Extract request is already pending.");
+  S.hunterAP-=ab.cost;S.hiderAP+=ab.cost;
+  const scr=!!S.scrambleArmed;S.scrambleArmed=false;
+  if(k==="extract"){
+    S.extractReq={expiresAt:now+EXTRACT_MS,scrambled:scr};
+    addLog(S,{kind:"event",tag:"meta",title:"Word Extract requested",text:"Waiting for the Hider to send a word."});
+    return;
+  }
+  addLog(S,{kind:"clue",tag:ab.tag,title:ab.name+(k==="proximity"||k==="term"?" • "+input:""),text:compute(k,S,input,scr),scrambled:scr});
+}
+function hunterGuess(S,now,book,ch,v){
+  if(S.status!=="playing")throw GE("The round is not active.");
+  if(now<S.cooldownUntil)throw GE("Cooldown active: "+fmt(S.cooldownUntil-now)+" left.");
+  const b=BOOK(book);if(!b)throw GE("Choose a book.");
+  ch=parseInt(ch,10);v=parseInt(v,10);
+  if(!(ch>=1&&ch<=b.ch))throw GE(b.name+" has "+b.ch+" chapter"+(b.ch>1?"s":"")+".");
+  if(!(v>=1&&v<=176))throw GE("Enter a valid verse number.");
+  const t=S.verse,g=book+" "+ch+":"+v;
+  if(book===t.book&&ch===t.ch&&v===t.v){S.status="ended";S.winner="hunters";S.reason="Hunters found the verse with "+g+".";addLog(S,{kind:"ok",tag:"meta",title:"Final Guess",text:g+" is correct."});return}
+  if(book===t.book&&ch===t.ch){S.cooldownUntil=now+COOLDOWN_MS;addLog(S,{kind:"bad",tag:"meta",title:"Final Guess • "+g,text:"Right book and chapter, wrong verse. 5 minute cooldown."});return}
+  S.hunterAP=Math.max(0,S.hunterAP-25);
+  addLog(S,{kind:"bad",tag:"meta",title:"Final Guess • "+g,text:"Wrong. Hunters lose 25 AP."});
+  if(S.hunterAP<=0){S.status="ended";S.winner="hider";S.reason="Hunters ran out of AP."}
+}
+function newRoom(code,hostId,name,role){
+  return{code,rev:1,status:"lobby",hostId,translation:"NKJV",nkjv:{},players:{[hostId]:{name,role}},verse:null,
+    hunterAP:100,hiderAP:20,apAnchor:0,cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,fieldTask:null,falseLead:null,extractReq:null,log:[],winner:null,reason:""}
+}
+function textFor(S,book,ch,v){const k=book+"|"+ch+"|"+v;if(S.translation==="NKJV"&&S.nkjv&&S.nkjv[k])return{text:S.nkjv[k],src:"NKJV"};
+  const s=SAMPLE.find(x=>x.book===book&&x.ch===ch&&x.v===v);return s?{text:s.text,src:"KJV"}:null}
+function autoDecoys(S){
+  const t=S.verse,tb=BOOK(t.book);
+  const others=SAMPLE.filter(s=>!(s.book===t.book&&s.ch===t.ch&&s.v===t.v));
+  const score=s=>(s.book===t.book?0:BOOK(s.book).ot===tb.ot?1:2)+Math.random()*0.5;
+  return others.sort((a,b)=>score(a)-score(b)).slice(0,2).map(s=>({book:s.book,ch:s.ch,v:s.v}));
+}
+function finalizeFalseLead(S,typed,auto){
+  const same=(x,y)=>x.book===y.book&&x.ch===y.ch&&x.v===y.v;
+  let d=typed.slice();
+  if(d.some(x=>same(x,S.verse))||(d.length===2&&same(d[0],d[1])))throw GE("Decoys must differ from each other and from your verse.");
+  if(d.length<2)d=d.concat(autoDecoys(S).filter(x=>!d.some(y=>same(x,y)))).slice(0,2);
+  const real={book:S.verse.book,ch:S.verse.ch,v:S.verse.v};
+  S.falseLead={pending:false,decoys:d,options:shuffle([real,...d]),cleared:false};
+  addLog(S,{kind:"event",tag:"meta",title:"False Lead",text:"Three candidate verses arrived: "+S.falseLead.options.map(refStr).join(", ")+". Rule out a decoy to unlock Precision Intel."+(auto?" (decoys auto-selected)":"")});
+}
+//#LOGIC-END
+
+/* ---------- app shell ---------- */
+const $app=document.getElementById("app"),$layer=document.getElementById("layer");
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const A={code:null,S:null,me:null,mode:"local",db:null,unsub:null,drafts:{},modal:null,drawer:false,sync:"idle",toast:null,flags:{}};
+(function(){let id=null;try{id=localStorage.getItem("vh.id")}catch(e){}if(!id){id="p"+Math.random().toString(36).slice(2,10);try{localStorage.setItem("vh.id",id)}catch(e){}}A.me=id;
+  try{A.drafts["j-name"]=localStorage.getItem("vh.name")||""}catch(e){}})();
+
+/* ---------- networking: cloud db with local-tab fallback ---------- */
+const mem={};let bc=null;try{bc=new BroadcastChannel("verse-hunt")}catch(e){}
+const Net={
+  ready:null,
+  init(){this.ready=(async()=>{
+    try{
+      const cfg=window.VERSE_HUNT_FIREBASE;
+      if(cfg&&cfg.apiKey&&cfg.databaseURL&&!/YOUR_/.test(cfg.apiKey+cfg.databaseURL)&&window.firebase){
+        firebase.initializeApp(cfg);A.fdb=firebase.database();A.mode="cloud";
+        A.fdb.ref(".info/connected").on("value",s=>{A.sync=s.val()?"live":"connecting";render()});
+      }
+    }catch(e){console.error(e)}
+    render()})();return this.ready},
+  lkey:c=>"vh.room."+c,
+  fix(S){if(!S)return null;S.log=S.log||[];S.nkjv=S.nkjv||{};S.players=S.players||{};S.fieldTask=S.fieldTask||null;S.extractReq=S.extractReq||null;S.falseLead=S.falseLead||null;
+    if(S.falseLead){S.falseLead.decoys=S.falseLead.decoys||[];S.falseLead.options=S.falseLead.options||[]}return S},
+  async get(code){
+    if(A.mode==="cloud"){const s=await A.fdb.ref("rooms/"+code).once("value");return this.fix(s.val())}
+    try{const r=localStorage.getItem(this.lkey(code));if(r)return JSON.parse(r)}catch(e){}
+    return mem[code]?clone(mem[code]):null;
+  },
+  async put(S){
+    if(A.mode==="cloud"){await A.fdb.ref("rooms/"+S.code).set(clone(S));return}
+    mem[S.code]=clone(S);try{localStorage.setItem(this.lkey(S.code),JSON.stringify(S))}catch(e){}
+    try{bc&&bc.postMessage({code:S.code})}catch(e){}
+  },
+  sub(code,cb){
+    this.unsubscribe();
+    if(A.mode==="cloud"){
+      const ref=A.fdb.ref("rooms/"+code);
+      const h=ref.on("value",s=>cb(Net.fix(s.val())),e=>{A.sync="error";toast("Lost the room connection.");render()});
+      A.unsub=()=>ref.off("value",h);
+    }else{
+      A.sync="local";
+      const h=async m=>{if(!m||m.code===code){const s=await Net.get(code);cb(s)}};
+      const bch=ev=>h(ev.data),st=ev=>{if(ev.key===Net.lkey(code))h({code})};
+      bc&&bc.addEventListener("message",bch);window.addEventListener("storage",st);
+      A.unsub=()=>{bc&&bc.removeEventListener("message",bch);window.removeEventListener("storage",st)};
+      h({code});
+    }
+  },
+  unsubscribe(){if(A.unsub){try{A.unsub()}catch(e){}A.unsub=null}}
+};
+function onRemote(S){
+  if(!S){A.S=null;render();return}
+  if(A.S&&A.S.code===S.code&&(A.S.rev||0)>(S.rev||0))return;
+  A.S=S;render();
+}
+let queue=Promise.resolve();
+function act(fn){
+  queue=queue.then(async()=>{
+    try{
+      if(!A.S)return;
+      const S=clone(A.S),now=Date.now();normalize(S,now);fn(S,now);S.rev=(S.rev||0)+1;
+      A.S=S;render();await Net.put(S);
+    }catch(e){
+      if(e instanceof GameError)toast(e.message);
+      else{console.error(e);toast("Could not sync that action.");}
+    }
+  });return queue;
+}
+function toast(m){A.toast=m;let el=document.getElementById("toast");if(!el){el=document.createElement("div");el.id="toast";el.className="toast";el.setAttribute("role","status");document.body.appendChild(el)}
+  el.textContent=m;clearTimeout(toast.t);toast.t=setTimeout(()=>{el&&el.remove()},3600)}
+
+/* ---------- helpers ---------- */
+const dv=(id,d="")=>A.drafts[id]!==undefined?A.drafts[id]:d;
+const myRole=()=>A.S&&A.S.players[A.me]?A.S.players[A.me].role:null;
+const isHost=()=>A.S&&A.S.hostId===A.me;
+const hiderId=S=>Object.keys(S.players).find(i=>S.players[i].role==="hider");
+const hunterIds=S=>Object.keys(S.players).filter(i=>S.players[i].role==="hunter");
+function view(){if(!A.S)return null;const D=clone(A.S);accrue(D,Date.now());return D}
+function bookOptions(sel,fixed){return BOOKS.filter(b=>!fixed||b.name===fixed).map(b=>`<option value="${esc(b.name)}"${b.name===sel?" selected":""}>${esc(b.name)}</option>`).join("")}
+function trLabel(){const S=A.S;if(!S)return"Translation: NKJV";if(S.translation==="KJV")return"Translation: KJV";
+  if(S.verse&&S.verse.src!=="NKJV")return"Translation: NKJV · sample text is KJV";return"Translation: NKJV"}
+function code4(){const L="ABCDEFGHJKLMNPQRSTUVWXYZ";return Array.from({length:4},()=>L[Math.floor(Math.random()*L.length)]).join("")}
+function joinUrl(code){let base="";try{base=location.href.split("#")[0].split("?")[0]}catch(e){}return base+"?room="+code}
+
+/* ---------- views ---------- */
+function header(){
+  const S=A.S,r=myRole();
+  const sync=A.mode==="cloud"?(A.sync==="live"?"Sync: live":A.sync==="slow"?"Sync: slow":A.sync==="error"?"Sync: lost":"Sync: connecting"):"Sync: this browser only";
+  return `<div class="top"><div class="brand">Verse Hunt<small>${r?esc(r):"Deduction"}</small></div>
+  <div class="badges"><span class="badge">${esc(trLabel())}</span><span class="badge ${A.mode==="cloud"?"":"warn"}">${sync}</span>
+  <button class="btn ghost sm" data-act="settings">Settings</button>${S?`<button class="btn ghost sm" data-act="pair">Room ${esc(S.code)}</button><button class="btn ghost sm" data-act="leave">Leave</button>`:""}</div></div>`;
+}
+function landing(){
+  return header()+`<div class="split even">
+  <section class="card hot"><h2>Host a room</h2><p class="hint">You get a 4-letter code, a QR code and a join link.</p>
+   <label>Callsign<input id="h-name" value="${esc(dv("h-name",dv("j-name")))}" placeholder="Your name" maxlength="20"></label>
+   <label>Your role<select id="h-role"><option value="hunter"${dv("h-role")==="hunter"?" selected":""}>Hunter</option><option value="hider"${dv("h-role")==="hider"?" selected":""}>Hider</option></select></label>
+   <button class="btn" data-act="create">Create room</button></section>
+  <section class="card"><h2>Join a room</h2><p class="hint">Enter the code from the host, or open their link.</p>
+   <label>Room code<input id="j-code" class="mono" value="${esc(dv("j-code"))}" maxlength="4" placeholder="ABCD" autocapitalize="characters" style="text-transform:uppercase;letter-spacing:.2em;font-size:20px"></label>
+   <label>Callsign<input id="j-name" value="${esc(dv("j-name"))}" placeholder="Your name" maxlength="20"></label>
+   <label>Your role<select id="j-role"><option value="hunter"${dv("j-role")!=="hider"?" selected":""}>Hunter</option><option value="hider"${dv("j-role")==="hider"?" selected":""}>Hider</option></select></label>
+   <button class="btn" data-act="join">Join room</button></section></div>
+  <section class="card"><h2>How a round works</h2>
+   <p>The Hider secretly picks a verse. Hunters start with 100 AP, the Hider with 20. Every AP Hunters spend on an investigation moves to the Hider, who also earns 5 AP every 5 minutes. Hunters win by naming the exact book, chapter and verse. They lose if their AP reaches 0.</p>
+   <p class="hint">${A.mode==="cloud"?"Rooms sync live across devices.":"Firebase is not set up yet, so rooms only sync between tabs of this browser. See the README."}</p></section>`;
+}
+function pairingCard(S){
+  return `<div class="row" style="align-items:flex-start;gap:20px"><div><div class="hint">ROOM CODE</div><div class="code">${esc(S.code)}</div></div>
+  <div class="qr" id="qr"></div></div>
+  <label>Join link<input id="join-url" readonly value="${esc(joinUrl(S.code))}"></label>
+  <div class="row"><button class="btn sm" data-act="copy-link">Copy link</button></div>`;
+}
+function versePicker(prefix,fixedBook){
+  const busy=A.flags["f"+prefix],src=dv(prefix+"-src");
+  return `<div class="row"><label>Book<select id="${prefix}-cb">${fixedBook?"":`<option value="">Book</option>`}${bookOptions(dv(prefix+"-cb",fixedBook||""),fixedBook)}</select></label>
+   <label>Chapter<input id="${prefix}-cc" inputmode="numeric" size="4" value="${esc(dv(prefix+"-cc"))}"></label>
+   <label>Verse<input id="${prefix}-cv" inputmode="numeric" size="4" value="${esc(dv(prefix+"-cv"))}"></label>
+   <button class="btn ghost sm" data-act="fetchverse" data-p="${prefix}" ${busy?"disabled":""}>${busy?"Fetching\u2026":"Fetch verse text"}</button></div>
+   <label>Verse text${src?" \u00b7 source: "+esc(src)+(src==="KJV"?" (public domain)":""):""}<textarea id="${prefix}-ct" placeholder="Enter the book, chapter and verse, then fetch. Check the text here before you lock it in. You can edit it.">${esc(dv(prefix+"-ct"))}</textarea></label>`;
+}
+function readRef(prefix,fixedBook){
+  const book=dv(prefix+"-cb",fixedBook||"");const b=BOOK(book);if(!b)throw GE("Choose a book.");
+  const ch=parseInt(dv(prefix+"-cc"),10),v=parseInt(dv(prefix+"-cv"),10);
+  if(!(ch>=1&&ch<=b.ch))throw GE(b.name+" has "+b.ch+" chapter"+(b.ch>1?"s":"")+".");
+  if(!(v>=1&&v<=176))throw GE("Enter a verse number.");
+  return{book,ch,v};
+}
+function readPick(prefix,fixedBook){
+  const r=readRef(prefix,fixedBook);
+  const text=(dv(prefix+"-ct")||"").trim();
+  if(wordCount(text)<1)throw GE("Fetch or enter the verse text first, then check it.");
+  const src=dv(prefix+"-src")||(A.S.translation==="NKJV"?"NKJV":"KJV");
+  return Object.assign(r,{text,src});
+}
+function parseRef(str){
+  const m=String(str||"").trim().match(/^(.+?)\s+(\d+)\s*:\s*(\d+)$/);if(!m)return null;
+  const b=BOOKS.find(x=>x.name.toLowerCase()===m[1].trim().toLowerCase());if(!b)return null;
+  const ch=+m[2],v=+m[3];if(ch<1||ch>b.ch||v<1)return null;return{book:b.name,ch,v};
+}
+function lobby(){
+  const S=A.S,r=myRole(),host=isHost();
+  const players=Object.entries(S.players).map(([id,p])=>`<li><span>${esc(p.name||"Player")}${id===A.me?" (you)":""}${id===S.hostId?" · host":""}</span><span class="pill">${esc(p.role)}</span></li>`).join("");
+  const canStart=host&&hiderId(S)&&S.verse&&hunterIds(S).length>0;
+  return header()+`<div class="split"><section class="card hot"><h2>Lobby</h2>${pairingCard(S)}</section>
+  <section class="card"><h3>Players</h3><ul class="pl">${players}</ul>
+   <p class="hint">${hiderId(S)?"Hider is in.":"No Hider yet."} ${hunterIds(S).length} Hunter${hunterIds(S).length===1?"":"s"}.</p>
+   ${r==="hunter"||!r?"":""}</section></div>
+  ${r==="hider"?`<section class="card hot"><h2>Your secret verse</h2>
+    ${S.verse?`<div class="verse">${esc(S.verse.text)}<div class="hint mono">${esc(refStr(S.verse))} · ${esc(S.verse.src)}</div></div>`:`<p class="hint">Enter the verse Hunters have to find. Only you can see it.</p>`}
+    ${versePicker("lv")}<button class="btn" data-act="set-verse">${S.verse?"Change verse":"Lock in verse"}</button></section>`:""}
+  ${host?`<section class="card"><h2>Host settings</h2>
+    <label>Translation<select id="tr-sel"><option value="NKJV"${S.translation==="NKJV"?" selected":""}>NKJV (default)</option><option value="KJV"${S.translation==="KJV"?" selected":""}>KJV</option></select></label>
+    <details><summary class="hint" style="cursor:pointer">Import NKJV verse text (${Object.keys(S.nkjv||{}).length} loaded)</summary>
+     <p class="hint" style="margin:8px 0">The built-in verses use public-domain KJV text because the NKJV is copyrighted. If you have a license to the text, paste lines like <span class="mono">John|3|16|verse text</span>. Imported verses replace the KJV text and the badge shows plain NKJV.</p>
+     <textarea id="nkjv-in" placeholder="John|3|16|...">${esc(dv("nkjv-in"))}</textarea><button class="btn sm" data-act="import-nkjv" style="margin-top:8px">Import</button></details>
+    <button class="btn" data-act="start" ${canStart?"":"disabled"}>Start round</button>
+    ${canStart?"":`<p class="hint">Needs a Hider with a locked verse and at least one Hunter.</p>`}</section>`:`<p class="hint">Waiting for the host to start the round.</p>`}`;
+}
+function lockReason(S,now){
+  if(S.status!=="playing")return"Round over";
+  if(now<S.cooldownUntil)return"Cooldown "+fmt(S.cooldownUntil-now);
+  if(S.fieldTask&&S.fieldTask.active)return"Field Task: spending paused";
+  return null;
+}
+function logHtml(S,role){
+  const items=S.log.filter(e=>!(e.vis==="hider"&&role!=="hider"));
+  if(!items.length)return`<p class="hint">No clues yet.</p>`;
+  return items.map(e=>`<div class="entry ${esc(e.kind)}${e.stale?" stale":""}"><div class="m"><span>${new Date(e.t).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span>${e.scrambled?`<span class="pill warn">scrambled</span>`:""}${e.stale?`<span class="pill">voided by shift</span>`:""}</div><div class="t">${esc(e.title)}</div><div class="x">${esc(e.text)}</div></div>`).join("");
+}
+function statsHtml(S,now,role){
+  const nextAP=S.apAnchor+PASSIVE_MS;
+  return `<div class="stats"><div class="stat"><span class="l">Hunter AP</span><span class="ap" style="color:var(--hunter)">${S.hunterAP}</span></div>
+  <div class="stat"><span class="l">Hider AP</span><span class="ap" style="color:var(--hider)">${S.hiderAP}</span></div>
+  <div class="stat"><span class="l">Hider +5 AP in</span><span class="v" data-cd="${nextAP}" data-roll="${PASSIVE_MS}">${fmt(nextAP-now)}</span></div></div>`;
+}
+function hunterView(){
+  const S=view(),now=Date.now(),lock=lockReason(S,now),off=now<S.offlineUntil;
+  const fl=S.falseLead&&!S.falseLead.cleared,ft=S.fieldTask&&S.fieldTask.active;
+  const cards=HUNTER_ABILITIES.map(ab=>{
+    const blocked=lock||(ab.precision&&fl)||(ab.k==="extract"&&S.extractReq)||S.hunterAP-ab.cost<1;
+    const input=ab.input==="book"?`<select id="in-prox" aria-label="Book to ping">${`<option value="">Choose a book</option>`+bookOptions(dv("in-prox"))}</select>`
+      :ab.input==="word"?`<input id="in-term" placeholder="One word" value="${esc(dv("in-term"))}" maxlength="30" autocapitalize="none">`:"";
+    return `<div class="ab"><div class="h"><span class="n">${esc(ab.name)}</span><span class="cost">${ab.cost} AP</span></div><p>${esc(ab.d)}</p>${input}
+      <button class="btn sm" data-act="use" data-k="${ab.k}" ${blocked?"disabled":""}>${ab.k==="extract"&&S.extractReq?"Pending…":"Run"}</button></div>`}).join("");
+  const banners=[];
+  if(S.cooldownUntil>now)banners.push(`<div class="banner bad"><strong>Cooldown</strong><span>No guesses or investigations for <span class="mono" data-cd="${S.cooldownUntil}">${fmt(S.cooldownUntil-now)}</span>.</span></div>`);
+  if(ft)banners.push(`<div class="banner"><strong>Field Task: AP spending paused</strong><span>${esc(S.fieldTask.prompt)}</span>
+    <div class="row"><input id="ft-ans" placeholder="Verification answer" value="${esc(dv("ft-ans"))}"><button class="btn sm" data-act="ft-submit">Submit</button></div></div>`);
+  if(fl&&S.falseLead.pending)banners.push(`<div class="banner"><strong>False Lead incoming: Precision Intel blocked</strong><span>The Hider is choosing decoys. They arrive within <span class="mono" data-cd="${S.falseLead.expiresAt}">${fmt(S.falseLead.expiresAt-now)}</span>.</span></div>`);
+  else if(fl)banners.push(`<div class="banner"><strong>False Lead: Precision Intel blocked</strong><span>Three candidate verses were sent in. Two are decoys. Rule one out to unlock Term Sweep and Sector Lock. A wrong pick costs 10 AP.</span>
+    <div class="row">${S.falseLead.options.map((o,i)=>`<button class="btn ghost sm" data-act="decoy" data-i="${i}">Rule out ${esc(o.book+" "+o.ch+":"+o.v)}</button>`).join("")}</div></div>`);
+  if(off)banners.push(`<div class="banner bad"><strong>Offline Protocol</strong><span>Verse and keyword helper tools are locked for <span class="mono" data-cd="${S.offlineUntil}">${fmt(S.offlineUntil-now)}</span>.</span></div>`);
+  if(S.extractReq)banners.push(`<div class="banner"><strong>Word Extract in transit</strong><span>The Hider has <span class="mono" data-cd="${S.extractReq.expiresAt}">${fmt(S.extractReq.expiresAt-now)}</span> to choose a word.</span></div>`);
+  return header()+`<section class="card hot">${statsHtml(S,now,"hunter")}</section>${banners.join("")}
+  <div class="split"><section class="card"><h2>Recon deck</h2><div class="grid">${cards}</div></section>
+  <div style="display:flex;flex-direction:column;gap:16px;min-width:0"><section class="card"><h2>Clue log</h2><div class="log">${logHtml(S,"hunter")}</div></section>
+  <section class="card"><h2>Field tools</h2>${off?`<p class="hint">Locked by the Hider.</p>`:`
+    <label>Verse lookup<div class="row"><select id="lk-book"><option value="">Book</option>${bookOptions(dv("lk-book"))}</select><input id="lk-c" inputmode="numeric" size="3" placeholder="Ch" value="${esc(dv("lk-c"))}"><input id="lk-v" inputmode="numeric" size="3" placeholder="V" value="${esc(dv("lk-v"))}"><button class="btn sm" data-act="lookup">Look up</button></div></label>
+    <label>Keyword search<div class="row"><input id="kw" placeholder="word" value="${esc(dv("kw"))}"><button class="btn sm" data-act="kwsearch">Search</button></div></label>
+    <div id="tool-out" class="hint">${esc(A.flags.toolOut||"Searches the built-in verse set.")}</div>`}</section></div></div>
+  <div class="row"><button class="btn" data-act="drawer">Final Guess</button></div>`;
+}
+function hiderView(){
+  const S=view(),now=Date.now(),v=S.verse;
+  const ab=(k,name,cost,d,extra="")=>`<div class="ab"><div class="h"><span class="n">${name}</span><span class="cost">${cost} AP</span></div><p>${d}</p>${extra}<button class="btn sm" data-act="h-${k}" ${S.status!=="playing"||S.hiderAP<cost||(k==="shift"&&S.shifted>=1)||(k==="false"&&S.falseLead&&!S.falseLead.cleared)?"disabled":""}>Deploy</button></div>`;
+  const words=v.text.split(/\s+/).map(w=>{const t=tokens(w);const core=t.length?t.join("-"):"";const ok=core&&isEligible(core)&&eligibleWords(v.text).some(x=>x.toLowerCase()===core.toLowerCase());
+    return S.extractReq&&ok?`<button class="w ok" data-act="send-word" data-w="${esc(core)}">${esc(w)}</button>`:`<span class="w${ok?" ok":""}" style="${ok?"cursor:default":""}">${esc(w)}</span>`}).join(" ");
+  const decoyPick=[1,2].map(n=>`<input id="fl-d${n}" placeholder="Decoy ${n}, e.g. John 3:16 (blank = auto)" value="${esc(dv("fl-d"+n))}" aria-label="Decoy ${n}">`).join("");
+  const guesses=S.log.filter(e=>e.title&&e.title.startsWith("Final Guess"));
+  return header()+`<section class="card hot">${statsHtml(S,now,"hider")}</section>
+  <section class="card hot"><h2>Secret verse</h2><div class="verse">${S.extractReq?words:esc(v.text)}<div class="hint mono">${esc(refStr(v))} · ${esc(v.src)}</div></div>
+   ${S.extractReq?`<div class="banner"><strong>Word Extract requested</strong><span>Tap one highlighted word to send it. Filler words are never eligible. Auto-send in <span class="mono" data-cd="${S.extractReq.expiresAt}">${fmt(S.extractReq.expiresAt-now)}</span>.</span>
+     <div class="row"><button class="btn sm" data-act="send-default">Send Default</button></div></div>`:""}
+   ${S.falseLead&&S.falseLead.pending?`<div class="banner"><strong>False Lead: choose your decoys</strong><span>Name two decoy verses, or let the app pick. Auto-pick in <span class="mono" data-cd="${S.falseLead.expiresAt}">${fmt(S.falseLead.expiresAt-now)}</span>.</span>
+     <div class="row">${decoyPick}</div><div class="row"><button class="btn sm" data-act="fl-send">Send decoys</button><button class="btn ghost sm" data-act="fl-auto">Auto-pick</button></div></div>`:""}
+   ${S.scrambleArmed?`<p class="hint"><span class="pill warn">armed</span> Signal Scramble will corrupt the next scan result.</p>`:""}
+   ${S.fieldTask&&S.fieldTask.active?`<p class="hint"><span class="pill warn">active</span> Field Task is pausing Hunter spending.</p>`:""}
+   ${now<S.offlineUntil?`<p class="hint"><span class="pill warn">active</span> Offline Protocol ends in <span class="mono" data-cd="${S.offlineUntil}">${fmt(S.offlineUntil-now)}</span>.</p>`:""}</section>
+  <div class="split"><section class="card"><h2>Countermeasures</h2><div class="grid">
+   ${ab("scramble","Signal Scramble",15,"Corrupts one detail in the Hunters’ next scan result.")}
+   ${ab("offline","Offline Protocol",20,"Locks the Hunters’ verse and keyword tools for 5 minutes.")}
+   ${ab("false","False Lead",25,"Sends two decoy verses alongside yours. You get 5 minutes to choose them. Blocks Term Sweep and Sector Lock until Hunters rule out a decoy.")}
+   ${ab("field","Field Task",30,"Pauses Hunter AP spending until they enter your verification answer.",`<input id="ft-prompt" placeholder="Prompt (optional)" value="${esc(dv("ft-prompt"))}"><input id="ft-word" placeholder="Answer word (default: MANNA)" value="${esc(dv("ft-word"))}">`)}
+   ${ab("shift","Shift Position",50,"Move to another verse in the same book. Once per round. Voids chapter and verse clues."+(S.shifted?" Already used.":""),`<details ${dv("sh-ct")||dv("sh-cc")?"open":""}><summary class="hint" style="cursor:pointer">New verse in ${esc(v.book)}</summary>${versePicker("sh",v.book)}</details>`)}
+  </div></section>
+  <div style="display:flex;flex-direction:column;gap:16px;min-width:0"><section class="card"><h2>Hunter activity</h2><div class="log">${logHtml(S,"hider")}</div></section></div></div>`;
+}
+function ended(){
+  const S=A.S,hw=S.winner==="hunters";
+  return `<div class="modal"><div class="card hot"><div class="win" style="color:${hw?"var(--hunter)":"var(--hider)"}">${hw?"Hunters win":"Hider wins"}</div><p>${esc(S.reason)}</p>
+   <div class="verse">${esc(S.verse.text)}<div class="hint mono">${esc(refStr(S.verse))} · ${esc(S.verse.src)}</div></div>
+   <div class="row">${isHost()?`<button class="btn" data-act="again">Play again</button>`:`<span class="hint">The host can start another round.</span>`}<button class="btn ghost" data-act="leave">Leave</button></div></div></div>`;
+}
+function drawer(){
+  const S=A.S;
+  return `<div class="drawer" role="dialog" aria-label="Final guess"><div class="in"><div class="row" style="justify-content:space-between"><h2>Final Guess</h2><button class="btn ghost sm" data-act="drawer">Close</button></div>
+  <p class="hint">Exact match wins. Right chapter, wrong verse: 5 minute cooldown. Wrong book or chapter: −25 AP.</p>
+  <div class="row"><label>Book<select id="g-book"><option value="">Book</option>${bookOptions(dv("g-book"))}</select></label>
+  <label>Chapter<input id="g-c" inputmode="numeric" size="4" value="${esc(dv("g-c"))}"></label><label>Verse<input id="g-v" inputmode="numeric" size="4" value="${esc(dv("g-v"))}"></label></div>
+  <div class="row"><button class="btn bad" data-act="guess" ${S.status!=="playing"||Date.now()<S.cooldownUntil?"disabled":""}>Submit guess</button></div></div></div>`;
+}
+function modal(){
+  if(A.modal==="settings")return settingsCard();
+  if(A.modal==="pair"&&A.S)return `<div class="modal" data-act="close-modal-bg"><div class="card"><div class="row" style="justify-content:space-between"><h2>Pair a device</h2><button class="btn ghost sm" data-act="close-modal">Close</button></div>${pairingCard(A.S)}</div></div>`;
+  return"";
+}
+
+function footer(){return `<footer class="hint" style="text-align:center;padding:12px 0">\u00a9 2026 CrossCode Ministry. All rights reserved.<br><span class="mono">crosscodeministry@gmail.com</span></footer>`}
+function applyTheme(v){const r=document.documentElement;if(v==="dark"||v==="light")r.dataset.theme=v;else delete r.dataset.theme}
+function settingsCard(){
+  const S=A.S,th=dv("st-theme",(()=>{try{return localStorage.getItem("vh.theme")||"auto"}catch(e){return"auto"}})());
+  const name=dv("st-name",(S&&S.players[A.me]&&S.players[A.me].name)||dv("j-name"));
+  const sync=A.mode==="cloud"?(A.sync==="live"?"Live across devices":"Connecting\u2026"):"This browser only";
+  return `<div class="modal" data-act="close-modal-bg"><div class="card"><div class="row" style="justify-content:space-between"><h2>Settings</h2><button class="btn ghost sm" data-act="close-modal">Close</button></div>
+   <label>Callsign<input id="st-name" value="${esc(name)}" maxlength="20"></label>
+   <label>Theme<select id="st-theme"><option value="auto"${th==="auto"?" selected":""}>Match my device</option><option value="light"${th==="light"?" selected":""}>Light</option><option value="dark"${th==="dark"?" selected":""}>Dark</option></select></label>
+   <div class="row"><button class="btn sm" data-act="st-save">Save</button></div>
+   <p class="hint">Sync: ${sync}.${S?" Translation: "+esc(S.translation)+".":""}</p>
+   <h3>About</h3>
+   <p>Verse Hunt. Code created by CrossCode Ministry.</p>
+   <p>\u00a9 2026 CrossCode Ministry. All rights reserved.</p>
+   <p class="hint">Contact: <span class="mono">crosscodeministry@gmail.com</span> <button class="btn ghost sm" data-act="st-copy">Copy</button></p></div></div>`;
+}
+/* ---------- render ---------- */
+function render(){
+  const ae=document.activeElement;const fid=ae&&ae.id,fs=ae&&ae.selectionStart,fe=ae&&ae.selectionEnd;
+  const y=window.scrollY;
+  const S=A.S;let html;
+  document.body.dataset.role=myRole()||"hunter";
+  if(!S||!S.players[A.me])html=landing();
+  else if(S.status==="lobby")html=lobby();
+  else html=(myRole()==="hider"?hiderView():hunterView());
+  $app.innerHTML=html+footer();
+  let layer=modal();
+  if(S&&S.status==="ended")layer+=ended();
+  if(S&&A.drawer&&myRole()==="hunter"&&S.status==="playing")layer+=drawer();
+  $layer.innerHTML=layer;
+  const qr=document.getElementById("qr");
+  if(qr&&S&&window.QRCode){try{new QRCode(qr,{text:joinUrl(S.code),width:168,height:168,colorDark:"#000000",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M})}catch(e){}}
+  if(fid){const el=document.getElementById(fid);if(el){el.focus();try{if(fs!=null)el.setSelectionRange(fs,fe)}catch(e){}}}
+  window.scrollTo(0,y);
+}
+document.addEventListener("input",e=>{const t=e.target;if(t.id)A.drafts[t.id]=t.value;if(t.id&&/-ct$/.test(t.id)){delete A.drafts[t.id.replace(/-ct$/,"-src")]}if(t.id==="j-name"||t.id==="h-name"){try{localStorage.setItem("vh.name",t.value)}catch(x){}}});
+document.addEventListener("change",e=>{const t=e.target;if(t.id)A.drafts[t.id]=t.value;if(t.id==="st-theme")applyTheme(t.value);
+  if(t.id==="tr-sel"&&isHost())act(S=>{S.translation=t.value;if(S.verse){const x=textFor(S,S.verse.book,S.verse.ch,S.verse.v);if(x&&S.verse.src!==x.src&&SAMPLE.some(s=>s.book===S.verse.book&&s.ch===S.verse.ch&&s.v===S.verse.v)){S.verse.text=x.text;S.verse.src=x.src}}})});
+
+/* ---------- actions ---------- */
+const H={
+  async create(){await Net.ready;const name=(dv("h-name")||"Host").trim().slice(0,20)||"Host";const role=dv("h-role","hunter");
+    let code,tries=0;do{code=code4();tries++}while(await Net.get(code)&&tries<20);
+    const S=newRoom(code,A.me,name,role);
+    try{await Net.put(S)}catch(e){toast(A.mode==="cloud"?"Could not create the room. Check your connection and Firebase rules.":"Could not create the room.");return}
+    A.S=S;A.code=code;Net.sub(code,onRemote);render()},
+  async join(){await Net.ready;const code=(dv("j-code")||"").trim().toUpperCase();const name=(dv("j-name")||"Player").trim().slice(0,20)||"Player";const role=dv("j-role","hunter");
+    if(code.length!==4){toast("Enter the 4-letter room code.");return}
+    const S=await Net.get(code);if(!S){toast("No room found with code "+code+".");return}
+    if(!S.players[A.me]){
+      if(role==="hider"){if(hiderId(S)){toast("This room already has a Hider.");return}if(S.status!=="lobby"){toast("The round already started.");return}}
+      A.S=S;A.code=code;
+      const S2=clone(S);S2.players[A.me]={name,role};S2.rev=(S2.rev||0)+1;
+      try{await Net.put(S2)}catch(e){A.S=null;toast("Could not join. Check your connection and Firebase rules.");return}
+      A.S=S2;
+    }else A.S=S;
+    A.code=code;Net.sub(code,onRemote);render()},
+  leave(){Net.unsubscribe();A.S=null;A.code=null;A.drawer=false;A.modal=null;render()},
+  settings(){A.modal="settings";render()},
+  "st-save"(){const name=(dv("st-name")||"").trim().slice(0,20);const th=dv("st-theme","auto");
+    try{localStorage.setItem("vh.theme",th)}catch(e){}applyTheme(th);
+    if(name){A.drafts["j-name"]=name;A.drafts["h-name"]=name;try{localStorage.setItem("vh.name",name)}catch(e){}
+      if(A.S&&A.S.players[A.me])act(S=>{if(S.players[A.me])S.players[A.me].name=name})}
+    A.modal=null;render();toast("Settings saved.")},
+  "st-copy"(){const t="crosscodeministry@gmail.com";(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast("Email copied."),()=>toast(t))},
+  pair(){A.modal="pair";render()},"close-modal"(){A.modal=null;render()},
+  "copy-link"(){const el=document.getElementById("join-url");const t=el.value;
+    (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast("Link copied."),()=>{el.select();toast("Press copy on the selected link.")})},
+  drawer(){A.drawer=!A.drawer;render()},
+  "set-verse"(){try{const v=readPick("lv");act(S=>{if(S.status!=="lobby")throw GE("Round already started.");S.verse=v})}catch(e){toast(e.message)}},
+  "import-nkjv"(){const lines=(dv("nkjv-in")||"").split("\n");let n=0;const add={};
+    for(const l of lines){const m=l.match(/^\s*([^|]+)\|(\d+)\|(\d+)\|(.+)$/);if(m&&BOOK(m[1].trim())){add[m[1].trim()+"|"+m[2]+"|"+m[3]]=m[4].trim();n++}}
+    if(!n){toast("No valid lines found. Use Book|Chapter|Verse|Text.");return}
+    act(S=>{S.nkjv=Object.assign({},S.nkjv,add);if(S.verse){const x=textFor(S,S.verse.book,S.verse.ch,S.verse.v);if(x&&SAMPLE.some(s=>s.book===S.verse.book&&s.ch===S.verse.ch&&s.v===S.verse.v)){S.verse.text=x.text;S.verse.src=x.src}}});
+    A.drafts["nkjv-in"]="";toast(n+" verse"+(n>1?"s":"")+" imported.")},
+  start(){act((S,now)=>{if(S.hostId!==A.me)throw GE("Only the host can start.");if(!hiderId(S)||!S.verse)throw GE("The Hider needs a locked verse.");if(!hunterIds(S).length)throw GE("Need at least one Hunter.");
+    Object.assign(S,{status:"playing",hunterAP:100,hiderAP:20,apAnchor:now,cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,fieldTask:null,falseLead:null,extractReq:null,log:[],winner:null,reason:""});
+    addLog(S,{kind:"event",tag:"meta",title:"Round started",text:"Hunters 100 AP. Hider 20 AP."})})},
+  again(){act(S=>{if(S.hostId!==A.me)throw GE("Only the host can reset.");Object.assign(S,{status:"lobby",verse:null,log:[],winner:null,reason:"",extractReq:null,falseLead:null,fieldTask:null,scrambleArmed:false,shifted:0,cooldownUntil:0,offlineUntil:0})})},
+  use(b){const k=b.dataset.k;const ab=HUNTER_ABILITIES.find(a=>a.k===k);const input=ab.input==="book"?dv("in-prox"):ab.input==="word"?dv("in-term"):null;act((S,now)=>hunterUse(S,now,k,input))},
+  guess(){const b=dv("g-book"),c=dv("g-c"),v=dv("g-v");act((S,now)=>{hunterGuess(S,now,b,c,v);A.drawer=false})},
+  decoy(b){const i=+b.dataset.i;act(S=>{const fl=S.falseLead;if(!fl||fl.cleared||fl.pending)return;const o=fl.options[i];
+    const isDecoy=fl.decoys.some(d=>d.book===o.book&&d.ch===o.ch&&d.v===o.v);
+    if(isDecoy){fl.cleared=true;addLog(S,{kind:"ok",tag:"meta",title:"False Lead cleared",text:refStr(o)+" was a decoy. Precision Intel is unlocked."})}
+    else{if(S.hunterAP<=10)throw GE("Not enough AP to risk a wrong pick.");S.hunterAP-=10;S.hiderAP+=10;addLog(S,{kind:"bad",tag:"meta",title:"False Lead",text:refStr(o)+" was not a decoy. 10 AP lost."})}})},
+  "ft-submit"(){const a=(dv("ft-ans")||"").trim().toLowerCase();act(S=>{const f=S.fieldTask;if(!f||!f.active)return;
+    if(a&&a===f.answer.toLowerCase()){f.active=false;addLog(S,{kind:"ok",tag:"meta",title:"Field Task complete",text:"Spending is unlocked."})}else throw GE("That answer does not match.")})},
+  lookup(){const book=dv("lk-book"),c=parseInt(dv("lk-c"),10),v=parseInt(dv("lk-v"),10);
+    if(Date.now()<view().offlineUntil){toast("Locked by Offline Protocol.");return}
+    const t=BOOK(book)?textFor(A.S,book,c,v):null;A.flags.toolOut=t?book+" "+c+":"+v+" — "+t.text:"Not in the built-in verse set.";render()},
+  kwsearch(){if(Date.now()<view().offlineUntil){toast("Locked by Offline Protocol.");return}
+    const w=(dv("kw")||"").trim();if(!w){toast("Enter a word.");return}
+    const hits=SAMPLE.filter(s=>containsWord(textFor(A.S,s.book,s.ch,s.v).text,w)).map(refStr);A.flags.toolOut=hits.length?"Found in the built-in set: "+hits.join(", "):"No built-in verse contains that word.";render()},
+  async fetchverse(b){
+    const p=b.dataset.p,fixed=p==="sh"&&A.S?A.S.verse.book:undefined;let r;
+    try{r=readRef(p,fixed)}catch(e){toast(e.message);return}
+    const local=textFor(A.S,r.book,r.ch,r.v);
+    if(local){A.drafts[p+"-ct"]=local.text;A.drafts[p+"-src"]=local.src;render();return}
+    A.flags["f"+p]=true;render();
+    try{
+      const res=await fetch("https://bible-api.com/"+encodeURIComponent(r.book+" "+r.ch+":"+r.v)+"?translation=kjv");
+      if(!res.ok)throw new Error("not found");
+      const j=await res.json();const t=String(j.text||"").replace(/\s+/g," ").trim();
+      if(!t)throw new Error("empty");
+      A.drafts[p+"-ct"]=t;A.drafts[p+"-src"]="KJV";
+    }catch(e){toast("Could not fetch that verse. Check the reference or type the text.")}
+    A.flags["f"+p]=false;render();
+  },
+  "send-word"(b){const w=b.dataset.w;act((S,now)=>resolveExtract(S,w,now))},
+  "send-default"(){act((S,now)=>resolveExtract(S,null,now))},
+  "h-scramble"(){act(S=>{hSpend(S,15);S.scrambleArmed=true;addLog(S,{kind:"event",tag:"meta",vis:"hider",title:"Signal Scramble armed",text:"The next Hunter scan result will be corrupted."})})},
+  "h-offline"(){act((S,now)=>{hSpend(S,20);S.offlineUntil=now+OFFLINE_MS;addLog(S,{kind:"event",tag:"meta",title:"Offline Protocol",text:"Verse and keyword tools are locked for 5 minutes."})})},
+  "h-false"(){act((S,now)=>{hSpend(S,25);S.falseLead={pending:true,expiresAt:now+FL_MS,decoys:[],options:[],cleared:false};
+      addLog(S,{kind:"event",tag:"meta",title:"False Lead incoming",text:"The Hider is choosing decoys. Precision Intel is blocked."})})},
+  "fl-send"(){const raw=[1,2].map(n=>(dv("fl-d"+n)||"").trim()).filter(Boolean);const typed=raw.map(parseRef);
+    if(typed.some(x=>!x)){toast("Write decoys like \u201cJohn 3:16\u201d.");return}
+    act(S=>{if(!S.falseLead||!S.falseLead.pending)return;finalizeFalseLead(S,typed,false)})},
+  "fl-auto"(){act(S=>{if(!S.falseLead||!S.falseLead.pending)return;finalizeFalseLead(S,[],true)})},
+  "h-field"(){act(S=>{hSpend(S,30);const p=(dv("ft-prompt")||"").trim()||"Find the Hider in person and ask for the verification word.";const a=(dv("ft-word")||"").trim()||"MANNA";
+    S.fieldTask={prompt:p,answer:a,active:true};addLog(S,{kind:"event",tag:"meta",title:"Field Task",text:p})})},
+  "h-shift"(){try{const v=readPick("sh",A.S.verse.book);act(S=>{if(S.shifted>=1)throw GE("Shift Position is once per round.");
+    if(v.ch===S.verse.ch&&v.v===S.verse.v)throw GE("Choose a different verse.");hSpend(S,50);S.verse=v;S.shifted=1;S.falseLead=null;
+    S.log.forEach(e=>{if(e.tag==="chapter"||e.tag==="verse")e.stale=true});
+    addLog(S,{kind:"event",tag:"meta",title:"Hider shifted position",text:"Same book, new verse. Chapter and verse clues are voided."})})}catch(e){toast(e.message)}}
+};
+function hSpend(S,c){if(S.status!=="playing")throw GE("The round is not active.");if(S.hiderAP<c)throw GE("Not enough AP.");S.hiderAP-=c}
+document.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b)return;
+  if(b.dataset.act==="close-modal-bg"&&e.target!==b)return;
+  const f=H[b.dataset.act==="close-modal-bg"?"close-modal":b.dataset.act];if(f)f(b)});
+
+/* ---------- clock ---------- */
+setInterval(()=>{
+  const now=Date.now();
+  document.querySelectorAll("[data-cd]").forEach(el=>{let t=+el.dataset.cd;const roll=+el.dataset.roll;if(roll&&t<=now)t+=Math.ceil((now-t+1)/roll)*roll;el.textContent=fmt(t-now)});
+  const S=A.S;if(!S||S.status!=="playing")return;
+  const r=myRole();
+  const dl=[S.extractReq&&S.extractReq.expiresAt,S.falseLead&&S.falseLead.pending&&S.falseLead.expiresAt].filter(Boolean);
+  if(dl.length){const late=now-Math.min(...dl);if((r==="hider"&&late>=0||r==="hunter"&&late>=4000)&&!A.flags.resolving){A.flags.resolving=true;act(()=>{}).then(()=>{A.flags.resolving=false})}}
+  const D=view();if(D.hunterAP<=0||(S.cooldownUntil&&S.cooldownUntil>now-1100&&S.cooldownUntil<=now))render();
+  if(S.offlineUntil&&S.offlineUntil>now-1100&&S.offlineUntil<=now)render();
+  if(S.cooldownUntil&&S.cooldownUntil<=now&&S.cooldownUntil>now-1100)render();
+},1000);
+
+/* ---------- boot ---------- */
+(function boot(){
+  try{applyTheme(localStorage.getItem("vh.theme")||"auto")}catch(e){}
+  try{const m=(location.hash.match(/room-([A-Za-z]{4})/)||location.search.match(/room=([A-Za-z]{4})/));if(m)A.drafts["j-code"]=m[1].toUpperCase()}catch(e){}
+  render();
+  Net.init().then(async()=>{
+    const c=A.drafts["j-code"];
+    try{const last=localStorage.getItem("vh.last");if(!c&&last){const S=await Net.get(last);if(S&&S.players[A.me]){A.S=S;A.code=last;Net.sub(last,onRemote);render()}}}catch(e){}
+  });
+})();
+setInterval(()=>{try{if(A.code)localStorage.setItem("vh.last",A.code);else localStorage.removeItem("vh.last")}catch(e){}},2000);
+</script>
+</body>
+</html>
