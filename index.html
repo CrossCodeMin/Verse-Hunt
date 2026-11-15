@@ -463,9 +463,10 @@ const Net={
   ready:null,
   init(){this.ready=(async()=>{
     try{
-      const cfg=window.VERSE_HUNT_FIREBASE;
+      let cfg=window.VERSE_HUNT_FIREBASE||window.firebaseConfig||window.FIREBASE_CONFIG||null;
+      if(cfg&&!cfg.databaseURL&&cfg.projectId)cfg=Object.assign({},cfg,{databaseURL:"https://"+cfg.projectId+"-default-rtdb.firebaseio.com"});
       if(cfg&&cfg.apiKey&&cfg.databaseURL&&!/YOUR_/.test(cfg.apiKey+cfg.databaseURL)&&window.firebase){
-        firebase.initializeApp(cfg);A.fdb=firebase.database();A.mode="cloud";
+        if(!firebase.apps.length)firebase.initializeApp(cfg);A.fdb=firebase.database();A.mode="cloud";
         A.fdb.ref(".info/connected").on("value",s=>{A.sync=s.val()?"live":"connecting";render()});
       }
     }catch(e){console.error(e)}
