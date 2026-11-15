@@ -1,8 +1,8 @@
-// Paste your Firebase web app config here (see README.md, step 3).
-window.VERSE_HUNT_FIREBASE = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-  projectId: "YOUR_PROJECT",
-  appId: "YOUR_APP_ID"
+const firebaseConfig = {
+  apiKey: "AIzaSyDE3bU-gv6RNuhgjgsffwqdEuCLXpDcij0",
+  authDomain: "verse-hunter-241ca.firebaseapp.com",
+  projectId: "verse-hunter-241ca",
+  storageBucket: "verse-hunter-241ca.firebasestorage.app",
+  messagingSenderId: "797864059826",
+  appId: "1:797864059826:web:70c63bb0181d25498bfaab"
 };
