@@ -448,6 +448,46 @@ function finalizeFalseLead(S,typed,auto){
   S.falseLead={pending:false,decoys:d,options:shuffle([real,...d]),cleared:false};
   addLog(S,{kind:"event",tag:"meta",title:"False Lead",text:"Three candidate verses arrived: "+S.falseLead.options.map(refStr).join(", ")+". Rule out a decoy to unlock Term Sweep and Sector Lock."+(auto?" (decoys auto-selected)":"")});
 }
+/* ---------- solo mode: the Computer plays the Hider ---------- */
+function soloStart(S,now){
+  const pool=SAMPLE.filter(x=>!(S.verse&&x.book===S.verse.book&&x.ch===S.verse.ch&&x.v===S.verse.v));
+  const x=pool[Math.floor(Math.random()*pool.length)],t=textFor(S,x.book,x.ch,x.v);
+  Object.assign(S,{verse:{book:x.book,ch:x.ch,v:x.v,text:t.text,src:t.src},status:"playing",hand:[],deck:buildDeck(),discard:[],handLimit:HAND_LIMIT,pending:null,challenge:null,abilityLock:{},ruleLock:0,endsAt:now+45*60000,cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,falseLead:null,log:[],winner:null,reason:"",botNext:now+30000});
+  drawCards(S,START_HAND);
+  addLog(S,{kind:"event",tag:"meta",title:"Solo round started",text:"The Computer hides a verse and holds "+START_HAND+" cards. You have 45 minutes."});
+}
+// One bot action per call. Returns true if it changed anything.
+function botStep(S,now){
+  if(!S.solo||S.status!=="playing")return false;
+  try{
+    const need=needDiscard(S);
+    if(need>0){discardCards(S,S.hand.slice(0,need).map(c=>c.id));return true}
+    if(S.falseLead&&S.falseLead.pending){finalizeFalseLead(S,[],true);return true}
+    const has=k=>S.hand.find(c=>c.k===k);
+    const spare=(id,n)=>{const o=S.hand.filter(c=>c.id!==id).slice(0,n).map(c=>c.id);return o.length===n?o:null};
+    const p=S.pending;
+    if(p){
+      if(now-(p.expiresAt-ANSWER_MS)<1500)return false;
+      const ab=HUNTER_ABILITIES.find(a=>a.k===p.k);
+      const ov=has("override");
+      if(ov&&ab.precision){const c=spare(ov.id,1);if(c){playCard(S,now,ov.id,null,c);return true}}
+      const sc=has("scramble");
+      if(sc&&!S.scrambleArmed&&ab.draw>=2){playCard(S,now,sc.id,null,[]);return true}
+      answerPending(S,now,false,null);return true;
+    }
+    if(now<(S.botNext||0))return false;
+    const played=()=>{S.botNext=now+60000;return true};
+    if(!S.challenge){
+      for(const k of ["fauna","era","symbol"]){const c=has(k);if(c){const keys=Object.keys(CH_POOL[k]);playCard(S,now,c.id,keys[S.log.length%keys.length],[]);return played()}}
+    }
+    const off=has("offline");if(off&&now>=S.offlineUntil){const c=spare(off.id,1);if(c){playCard(S,now,off.id,null,c);return played()}}
+    const fl=has("falselead");if(fl&&!(S.falseLead&&!S.falseLead.cleared)){const c=spare(fl.id,1);if(c){playCard(S,now,fl.id,null,c);return played()}}
+    const sh=has("shift");
+    if(sh&&S.shifted<1){const c=spare(sh.id,2),y=SAMPLE.find(z=>z.book===S.verse.book&&!(z.ch===S.verse.ch&&z.v===S.verse.v));
+      if(c&&y){const t=textFor(S,y.book,y.ch,y.v);playCard(S,now,sh.id,{book:y.book,ch:y.ch,v:y.v,text:t.text,src:t.src},c);return played()}}
+  }catch(e){if(!(e instanceof GameError))console.error(e)}
+  return false;
+}
 //#LOGIC-END
 
 /* ---------- app shell ---------- */
@@ -463,8 +503,11 @@ const Net={
   ready:null,
   init(){this.ready=(async()=>{
     try{
-      let cfg=window.VERSE_HUNT_FIREBASE||window.firebaseConfig||window.FIREBASE_CONFIG||null;
-      if(cfg&&!cfg.databaseURL&&cfg.projectId)cfg=Object.assign({},cfg,{databaseURL:"https://"+cfg.projectId+"-default-rtdb.firebaseio.com"});
+      // firebase-config.js may declare `const firebaseConfig = {...}` (a global lexical binding, not a window property), so read it by name.
+      let cfg=null;
+      try{if(typeof firebaseConfig!=="undefined")cfg=firebaseConfig}catch(e){}
+      cfg=cfg||window.VERSE_HUNT_FIREBASE||window.firebaseConfig||window.FIREBASE_CONFIG||null;
+      if(cfg&&!cfg.databaseURL)cfg=Object.assign({},cfg,{databaseURL:"https://verse-hunter-241ca-default-rtdb.firebaseio.com"});
       if(cfg&&cfg.apiKey&&cfg.databaseURL&&!/YOUR_/.test(cfg.apiKey+cfg.databaseURL)&&window.firebase){
         if(!firebase.apps.length)firebase.initializeApp(cfg);A.fdb=firebase.database();A.mode="cloud";
         A.fdb.ref(".info/connected").on("value",s=>{A.sync=s.val()?"live":"connecting";render()});
@@ -542,7 +585,7 @@ function header(){
   const sync=A.mode==="cloud"?(A.sync==="live"?"Sync: live":A.sync==="slow"?"Sync: slow":A.sync==="error"?"Sync: lost":"Sync: connecting"):"Sync: this browser only";
   return `<div class="top"><div class="brand">Verse Hunt<small>${r?esc(r):"Deduction"}</small></div>
   <div class="badges"><span class="badge">${esc(trLabel())}</span><span class="badge ${A.mode==="cloud"?"":"warn"}">${sync}</span>
-  <button class="btn ghost sm" data-act="settings">Settings</button>${S?`<button class="btn ghost sm" data-act="pair">Room ${esc(S.code)}</button><button class="btn ghost sm" data-act="leave">Leave</button>`:""}</div></div>`;
+  <button class="btn ghost sm" data-act="settings">Settings</button>${S?`${S.solo?`<span class="badge role">Solo vs Computer</span>`:`<button class="btn ghost sm" data-act="pair">Room ${esc(S.code)}</button>`}<button class="btn ghost sm" data-act="leave">Leave</button>`:""}</div></div>`;
 }
 function landing(){
   return header()+`<div class="split even">
@@ -555,6 +598,8 @@ function landing(){
    <label>Callsign<input id="j-name" value="${esc(dv("j-name"))}" placeholder="Your name" maxlength="20"></label>
    <label>Your role<select id="j-role"><option value="hunter"${dv("j-role")!=="hider"?" selected":""}>Hunter</option><option value="hider"${dv("j-role")==="hider"?" selected":""}>Hider</option></select></label>
    <button class="btn" data-act="join">Join room</button></section></div>
+  <section class="card"><h2>Play solo</h2><p class="hint">You are the Hunter. The Computer hides a verse, answers your investigations, draws cards and plays Hider cards against you. 45 minute limit.</p>
+   <button class="btn" data-act="solo">Play solo against the Computer</button></section>
   <section class="card"><h2>How a round works</h2>
    <p>The Hider secretly picks a verse and holds a hand of up to 6 tactical cards. Hunters investigate as often as they like, with no points to spend. Each time the Hider answers an investigation, the Hider draws cards. Hunters win by naming the exact book, chapter and verse. The Hider wins when the round timer runs out.</p>
    <p class="hint">${A.mode==="cloud"?"Rooms sync live across devices.":"Firebase is not set up yet, so rooms only sync between tabs of this browser. See the README."}</p></section>`;
@@ -767,13 +812,13 @@ const H={
     try{await Net.put(S)}catch(e){toast(A.mode==="cloud"?"Could not create the room. Check your connection and Firebase rules.":"Could not create the room.");return}
     A.S=S;A.code=code;Net.sub(code,onRemote);render()},
   async join(){await Net.ready;const code=(dv("j-code")||"").trim().toUpperCase();const name=(dv("j-name")||"Player").trim().slice(0,20)||"Player";const role=dv("j-role","hunter");
-    if(code.length!==4){toast("Enter the 4-letter room code.");return}
+    if(!/^[A-Z]{4}$/.test(code)){toast("Enter the 4-letter room code.");return}
     const S=await Net.get(code);if(!S){toast("No room found with code "+code+".");return}
     if(!S.players[A.me]){
       if(role==="hider"){if(hiderId(S)){toast("This room already has a Hider.");return}if(S.status!=="lobby"){toast("The round already started.");return}}
       A.S=S;A.code=code;
       const S2=clone(S);S2.players[A.me]={name,role};S2.rev=(S2.rev||0)+1;
-      try{await Net.put(S2)}catch(e){A.S=null;toast("Could not join. Check your connection and Firebase rules.");return}
+      try{if(A.mode==="cloud")await A.fdb.ref("rooms/"+code).update({["players/"+A.me]:{name,role}});else await Net.put(S2)}catch(e){A.S=null;toast("Could not join. Check your connection and Firebase rules.");return}
       A.S=S2;
     }else A.S=S;
     A.code=code;Net.sub(code,onRemote);render()},
@@ -795,11 +840,16 @@ const H={
     if(!n){toast("No valid lines found. Use Book|Chapter|Verse|Text.");return}
     act(S=>{S.nkjv=Object.assign({},S.nkjv,add);if(S.verse){const x=textFor(S,S.verse.book,S.verse.ch,S.verse.v);if(x&&SAMPLE.some(s=>s.book===S.verse.book&&s.ch===S.verse.ch&&s.v===S.verse.v)){S.verse.text=x.text;S.verse.src=x.src}}});
     A.drafts["nkjv-in"]="";toast(n+" verse"+(n>1?"s":"")+" imported.")},
+  async solo(){await Net.ready;const name=(dv("h-name")||dv("j-name")||"Hunter").trim().slice(0,20)||"Hunter";
+    let code,tries=0;do{code=code4();tries++}while(await Net.get(code)&&tries<20);
+    const S=newRoom(code,A.me,name,"hunter");S.players.bot={name:"Computer",role:"hider",bot:true};S.solo=true;S.botNext=0;soloStart(S,Date.now());
+    try{await Net.put(S)}catch(e){toast("Could not start a solo game.");return}
+    A.S=S;A.code=code;A.flags.dsel={};Net.sub(code,onRemote);render()},
   start(){const tl=parseInt(dv("tl-sel","60"),10)||0;act((S,now)=>{if(S.hostId!==A.me)throw GE("Only the host can start.");if(!hiderId(S)||!S.verse)throw GE("The Hider needs a locked verse.");if(!hunterIds(S).length)throw GE("Need at least one Hunter.");
     Object.assign(S,{status:"playing",hand:[],deck:buildDeck(),discard:[],handLimit:HAND_LIMIT,pending:null,challenge:null,abilityLock:{},ruleLock:0,endsAt:tl>0?now+tl*60000:0,cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,falseLead:null,log:[],winner:null,reason:""});
     drawCards(S,START_HAND);A.flags.dsel={};
     addLog(S,{kind:"event",tag:"meta",title:"Round started",text:"The Hider holds "+START_HAND+" cards (limit "+HAND_LIMIT+")."+(tl>0?" Time limit: "+tl+" minutes.":"")})})},
-  again(){act(S=>{if(S.hostId!==A.me)throw GE("Only the host can reset.");Object.assign(S,{status:"lobby",verse:null,log:[],winner:null,reason:"",pending:null,challenge:null,falseLead:null,scrambleArmed:false,shifted:0,cooldownUntil:0,offlineUntil:0,hand:[],deck:[],discard:[],abilityLock:{},ruleLock:0,endsAt:0});A.flags.dsel={}})},
+  again(){act((S,now)=>{if(S.hostId!==A.me)throw GE("Only the host can reset.");if(S.solo){soloStart(S,now);A.flags.dsel={};return}Object.assign(S,{status:"lobby",verse:null,log:[],winner:null,reason:"",pending:null,challenge:null,falseLead:null,scrambleArmed:false,shifted:0,cooldownUntil:0,offlineUntil:0,hand:[],deck:[],discard:[],abilityLock:{},ruleLock:0,endsAt:0});A.flags.dsel={}})},
   use(b){const k=b.dataset.k;const ab=HUNTER_ABILITIES.find(a=>a.k===k);const input=ab.input==="book"?dv("in-prox"):ab.input==="word"?dv("in-term"):null;act((S,now)=>hunterUse(S,now,k,input))},
   guess(){const b=dv("g-book"),c=dv("g-c"),v=dv("g-v");act((S,now)=>{hunterGuess(S,now,b,c,v);A.drawer=false})},
   decoy(b){const i=+b.dataset.i;act((S,now)=>{const fl=S.falseLead;if(!fl||fl.cleared||fl.pending)return;
@@ -857,6 +907,7 @@ setInterval(()=>{
   document.querySelectorAll("[data-cd]").forEach(el=>{el.textContent=fmt(+el.dataset.cd-now)});
   const S=A.S;if(!S||S.status!=="playing")return;
   const r=myRole();
+  if(S.solo&&!A.flags.bot){const T=clone(S);if(botStep(T,now)){A.flags.bot=true;act((S2,n2)=>{botStep(S2,n2)}).then(()=>{A.flags.bot=false})}}
   const dl=[S.endsAt,S.pending&&S.pending.expiresAt,S.challenge&&S.challenge.expiresAt,S.falseLead&&S.falseLead.pending&&S.falseLead.expiresAt].filter(Boolean);
   if(dl.length){const late=now-Math.min(...dl);if((r==="hider"&&late>=0||r==="hunter"&&late>=4000)&&!A.flags.resolving){A.flags.resolving=true;act(()=>{}).then(()=>{A.flags.resolving=false})}}
   if(S.cooldownUntil&&S.cooldownUntil<=now&&S.cooldownUntil>now-1100)render();
