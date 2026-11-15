@@ -102,6 +102,34 @@ label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--m
 .chk{flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:13px}.ab.sel{border-color:var(--role)}
 .pill{font-family:var(--f-mono);font-size:11px;border-radius:3px;padding:1px 6px;border:1px solid var(--line);color:var(--mute);text-transform:uppercase}
 .pill.warn{border-color:var(--warn);color:var(--warn)}
+.wrap.game{max-width:1500px}
+.cols{display:grid;gap:16px;grid-template-columns:300px minmax(0,1fr) 340px;align-items:start}
+.side{display:flex;flex-direction:column;gap:16px;min-width:0;position:sticky;top:76px;max-height:calc(100vh - 92px);overflow-y:auto}
+.mid{display:flex;flex-direction:column;gap:16px;min-width:0}
+.logcol .log{max-height:none}
+@media(max-width:1100px){.cols{grid-template-columns:1fr}.side{position:static;max-height:none;overflow:visible}}
+.grid{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));grid-auto-rows:1fr}
+.ab{min-height:210px;padding:14px}
+.ab .n{display:flex;align-items:center;font-size:17px;line-height:1.1;min-width:0}
+.ab>p:not(.hint){flex:1 1 auto}
+.ab .ft{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-top:auto}
+.ab{border-radius:10px;transition:border-color .15s,box-shadow .15s}
+.ab:hover:not(.used){border-color:var(--role);box-shadow:0 2px 10px rgba(0,0,0,.18)}
+.ab .h{padding-bottom:10px;border-bottom:1px solid var(--line)}
+.ic{width:34px;height:34px;font-size:20px}
+.draw{position:relative;display:inline-flex;align-items:center;gap:3px;border:1.5px solid var(--role);color:var(--role);border-radius:999px;padding:3px 9px;font-family:var(--f-mono);font-size:13px;cursor:help}
+.draw .mc{display:inline-block;width:9px;height:13px;border:1.5px solid currentColor;border-radius:2px;background:color-mix(in srgb,currentColor 18%,transparent)}
+.draw .mc+.mc{margin-left:-5px}
+.draw b{margin-left:3px;font-weight:600}
+.draw::after{content:attr(data-tip);position:absolute;left:0;bottom:calc(100% + 8px);width:210px;background:var(--ink);color:var(--bg);font-family:var(--f-body);font-size:12px;line-height:1.35;padding:8px 10px;border-radius:6px;opacity:0;pointer-events:none;transform:translateY(3px);transition:opacity .15s,transform .15s;z-index:6}
+.draw:hover::after,.draw:focus::after{opacity:1;transform:none}
+.ab.used{opacity:.55}
+.ic{display:inline-flex;width:32px;height:32px;align-items:center;justify-content:center;border-radius:8px;background:var(--surface2);margin-right:8px;font-size:19px;vertical-align:middle;text-transform:none;letter-spacing:0}
+.pops{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:25;width:min(520px,calc(100vw - 24px));display:flex;flex-direction:column;gap:8px;align-items:stretch}
+.pop{background:var(--surface);border:2px solid var(--role);border-radius:8px;padding:14px;box-shadow:0 10px 36px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:8px}
+.pop .head{justify-content:space-between;flex-wrap:nowrap;align-items:flex-start}
+.pop .big{font-size:17px;font-weight:600}
+.chip{align-self:center;background:var(--role);color:var(--on-role);border:0;border-radius:999px;padding:9px 16px;font-weight:600;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.4);max-width:100%}
 @media(prefers-reduced-motion:no-preference){.btn{transition:transform .08s}.btn:active:not(:disabled){transform:translateY(1px)}}
 </style>
 </head>
@@ -240,9 +268,12 @@ function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor
 function scrambleWord(w){if(w.length<3)return w;let o=w[0]+w.slice(1).split("").reverse().join("");if(o===w)o=w.slice(1)+w[0];return o}
 const fmt=ms=>{ms=Math.max(0,Math.ceil(ms/1000));return Math.floor(ms/60)+":"+String(ms%60).padStart(2,"0")};
 
+function qState(S,k){if(S.spent&&S.spent[k])return"used";const b=S.blocked&&S.blocked[k];if(b!==undefined&&b!==null&&(S.qCount||0)<=b)return"blocked";return"ok"}
 function tier(d){return d<=3?0:d<=10?1:2}
 const TIERS=["HOT","WARM","COLD"];
 // draw = how many cards the Hider draws when answering. Book-level answers draw 1, verse-level or wider draw 2, precision scans draw 3.
+const IC={canon:"⚖️",division:"🗂️",threshold:"📏",scroll:"📜",proximity:"📡",author:"✍️",tally:"🔢",extract:"🔤",term:"🔍",sector:"🎯",
+ fauna:"🐾",era:"⏳",symbol:"🗝️",override:"⛔",reroll:"🔄",scramble:"📻",offline:"📵",falselead:"🎭",shift:"🧭"};
 const HUNTER_ABILITIES=[
  {k:"canon",name:"Canon Split",draw:1,tag:"book",d:"Reveals Old Testament or New Testament."},
  {k:"division",name:"Division Sweep",draw:1,tag:"book",d:"Reveals the literary division of the book."},
@@ -278,10 +309,10 @@ const CARDS=[
  {k:"fauna",name:"Fauna Call",cost:0,copies:3,d:"Pick a Bible animal. Hunters must type a verse reference featuring it before they can investigate again."},
  {k:"era",name:"Era Check",cost:0,copies:3,d:"Pick a Bible era. Hunters must type a verse reference from that era before they can investigate again."},
  {k:"symbol",name:"Symbol Check",cost:0,copies:3,d:"Pick a recurring Bible object. Hunters must type a verse reference mentioning it before they can investigate again."},
- {k:"override",name:"Inquiry Override",cost:1,copies:2,d:"Needs a waiting investigation. Cancels it and locks that investigation for 3 minutes. No cards are drawn."},
+ {k:"override",name:"Inquiry Override",cost:1,copies:2,d:"Needs a waiting investigation. Cancels it. Hunters can ask that question again after another one is answered. No cards are drawn."},
  {k:"reroll",name:"Scan Reroll",cost:0,copies:3,d:"Needs a waiting investigation. Swap it for a different one from the same tier, then answer that one."},
  {k:"scramble",name:"Signal Scramble",cost:0,copies:3,d:"Corrupts one detail in the next scan result."},
- {k:"offline",name:"Offline Protocol",cost:1,copies:2,d:"Locks the Hunters’ verse lookup and keyword search tools for 5 minutes."},
+ {k:"offline",name:"Offline Protocol",cost:1,copies:2,d:"Hunters must put their Bibles away for 5 minutes: no looking up verses or searching."},
  {k:"falselead",name:"False Lead",cost:1,copies:2,d:"Sends two decoy verses alongside yours. Blocks Term Sweep and Sector Lock until Hunters rule out a decoy."},
  {k:"shift",name:"Position Shift",cost:2,copies:1,d:"Move the target to another verse in the same book. Once per round. Voids chapter and verse clues."}
 ];
@@ -322,7 +353,7 @@ function chalHit(S,c,ref){
   if(d.refs.some(s=>{const m=s.match(/^(.+?) (\d+):(\d+)(?:-(\d+))?$/);return m[1]===ref.book&&+m[2]===ref.ch&&ref.v>=+m[3]&&ref.v<=+(m[4]||m[3])}))return true;
   const t=textFor(S,ref.book,ref.ch,ref.v);return !!t&&d.kw.some(w=>containsWord(t.text,w));
 }
-function rerollOptions(k){const ab=HUNTER_ABILITIES.find(a=>a.k===k);return HUNTER_ABILITIES.filter(a=>a.tag===ab.tag&&a.k!==k&&!a.input).map(a=>a.k)}
+function rerollOptions(k,S){const ab=HUNTER_ABILITIES.find(a=>a.k===k);return HUNTER_ABILITIES.filter(a=>a.tag===ab.tag&&a.k!==k&&!a.input&&!(S&&S.spent&&S.spent[a.k])).map(a=>a.k)}
 function buildDeck(){let n=0;const d=[];for(const c of CARDS)for(let i=0;i<c.copies;i++)d.push({id:"c"+(++n),k:c.k});return shuffle(d)}
 function drawCards(S,n){let got=0;for(let i=0;i<n;i++){if(!S.deck.length){S.deck=shuffle(S.discard);S.discard=[]}if(!S.deck.length)break;S.hand.push(S.deck.pop());got++}return got}
 function needDiscard(S){return Math.max(0,S.hand.length-S.handLimit)}
@@ -339,7 +370,9 @@ function guardHunter(S,now){
 function hunterUse(S,now,k,input){
   const ab=HUNTER_ABILITIES.find(a=>a.k===k);
   guardHunter(S,now);
-  if(S.abilityLock[k]&&now<S.abilityLock[k])throw GE(ab.name+" is locked for "+fmt(S.abilityLock[k]-now)+".");
+  const qs=qState(S,k);
+  if(qs==="used")throw GE(ab.name+" was already asked this round.");
+  if(qs==="blocked")throw GE(ab.name+" was blocked. Get a different question answered first, then ask it again.");
   if(ab.precision&&S.falseLead&&!S.falseLead.cleared)throw GE("Blocked by False Lead. Rule out a decoy first.");
   if(k==="proximity"&&!BOOK(input))throw GE("Choose a book first.");
   if(k==="term"){input=String(input||"").trim();if(!/^[A-Za-z']+(-[A-Za-z']+)?$/.test(normQ(input)))throw GE("Enter a single word.")}
@@ -356,7 +389,7 @@ function answerPending(S,now,auto,word){
     else w=defaultWord(S.verse.text);
     text="The Hider sent the word: “"+(scr?scrambleWord(w):w)+"”."+(word?"":" (default word)");
   }else text=compute(p.k,S,p.input,scr);
-  S.scrambleArmed=false;S.pending=null;
+  S.scrambleArmed=false;S.pending=null;S.spent=S.spent||{};S.spent[p.k]=true;S.qCount=(S.qCount||0)+1;
   addLog(S,{kind:"clue",tag:ab.tag,title:ab.name+(p.k==="proximity"||p.k==="term"?" • "+p.input:"")+(p.rerolled?" (rerolled)":""),text,scrambled:scr});
   if(!auto){const n=drawCards(S,ab.draw);addLog(S,{kind:"event",tag:"meta",vis:"hider",title:"Cards drawn",text:"You drew "+n+" card"+(n===1?"":"s")+" for answering."})}
 }
@@ -392,19 +425,19 @@ function playCard(S,now,id,opt,costIds){
      addLog(S,{kind:"event",tag:"meta",title:def.name+" • "+opt,text:CH_ASK[card.k]+" Investigations are paused until it is cleared (5 minutes at most)."});break}
    case "override":{
      if(!S.pending)throw GE("No investigation is waiting.");
-     const ab=HUNTER_ABILITIES.find(a=>a.k===S.pending.k);S.abilityLock[ab.k]=now+LOCK_MS;S.pending=null;
-     addLog(S,{kind:"bad",tag:"meta",title:"Inquiry Override",text:ab.name+" was blocked and is locked for 3 minutes."});break}
+     const ab=HUNTER_ABILITIES.find(a=>a.k===S.pending.k);S.blocked=S.blocked||{};S.blocked[ab.k]=S.qCount||0;S.pending=null;
+     addLog(S,{kind:"bad",tag:"meta",title:"Inquiry Override",text:ab.name+" was blocked. Hunters can ask it again after another question is answered."});break}
    case "reroll":{
      if(!S.pending)throw GE("No investigation is waiting.");
-     if(!rerollOptions(S.pending.k).includes(opt))throw GE("Pick a replacement investigation.");
-     S.pending.k=opt;S.pending.input="";S.pending.rerolled=true;
+     if(!rerollOptions(S.pending.k,S).includes(opt))throw GE("Pick a replacement investigation.");
+     S.blocked=S.blocked||{};S.blocked[S.pending.k]=S.qCount||0;S.pending.k=opt;S.pending.input="";S.pending.rerolled=true;
      addLog(S,{kind:"event",tag:"meta",title:"Scan Reroll",text:"The Hider swapped the investigation for another from the same tier."});break}
    case "scramble":{
      if(S.scrambleArmed)throw GE("Signal Scramble is already armed.");
      S.scrambleArmed=true;addLog(S,{kind:"event",tag:"meta",vis:"hider",title:"Signal Scramble armed",text:"The next scan result will be corrupted."});break}
    case "offline":{
      if(now<S.offlineUntil)throw GE("Offline Protocol is already active.");
-     S.offlineUntil=now+OFFLINE_MS;addLog(S,{kind:"event",tag:"meta",title:"Offline Protocol",text:"Verse and keyword tools are locked for 5 minutes."});break}
+     S.offlineUntil=now+OFFLINE_MS;addLog(S,{kind:"event",tag:"meta",title:"Offline Protocol",text:"Hunters must put their Bibles away for 5 minutes."});break}
    case "falselead":{
      if(S.falseLead&&!S.falseLead.cleared)throw GE("A False Lead is already active.");
      S.falseLead={pending:true,expiresAt:now+FL_MS,decoys:[],options:[],cleared:false};
@@ -428,7 +461,7 @@ function normalize(S,now){
 }
 function newRoom(code,hostId,name,role){
   return{code,rev:1,status:"lobby",hostId,translation:"NKJV",nkjv:{},players:{[hostId]:{name,role}},verse:null,
-    handLimit:HAND_LIMIT,hand:[],deck:[],discard:[],pending:null,challenge:null,abilityLock:{},ruleLock:0,endsAt:0,
+    handLimit:HAND_LIMIT,hand:[],deck:[],discard:[],pending:null,challenge:null,abilityLock:{},spent:{},blocked:{},qCount:0,ruleLock:0,endsAt:0,
     cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,falseLead:null,log:[],winner:null,reason:""}
 }
 function textFor(S,book,ch,v){const k=book+"|"+ch+"|"+v;if(S.translation==="NKJV"&&S.nkjv&&S.nkjv[k])return{text:S.nkjv[k],src:"NKJV"};
@@ -452,7 +485,7 @@ function finalizeFalseLead(S,typed,auto){
 function soloStart(S,now){
   const pool=SAMPLE.filter(x=>!(S.verse&&x.book===S.verse.book&&x.ch===S.verse.ch&&x.v===S.verse.v));
   const x=pool[Math.floor(Math.random()*pool.length)],t=textFor(S,x.book,x.ch,x.v);
-  Object.assign(S,{verse:{book:x.book,ch:x.ch,v:x.v,text:t.text,src:t.src},status:"playing",hand:[],deck:buildDeck(),discard:[],handLimit:HAND_LIMIT,pending:null,challenge:null,abilityLock:{},ruleLock:0,endsAt:now+45*60000,cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,falseLead:null,log:[],winner:null,reason:"",botNext:now+30000});
+  Object.assign(S,{verse:{book:x.book,ch:x.ch,v:x.v,text:t.text,src:t.src},status:"playing",hand:[],deck:buildDeck(),discard:[],handLimit:HAND_LIMIT,pending:null,challenge:null,abilityLock:{},spent:{},blocked:{},qCount:0,ruleLock:0,endsAt:now+45*60000,cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,falseLead:null,log:[],winner:null,reason:"",botNext:now+30000});
   drawCards(S,START_HAND);
   addLog(S,{kind:"event",tag:"meta",title:"Solo round started",text:"The Computer hides a verse and holds "+START_HAND+" cards. You have 45 minutes."});
 }
@@ -493,7 +526,7 @@ function botStep(S,now){
 /* ---------- app shell ---------- */
 const $app=document.getElementById("app"),$layer=document.getElementById("layer");
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const A={code:null,S:null,me:null,mode:"local",db:null,unsub:null,drafts:{},modal:null,drawer:false,sync:"idle",toast:null,flags:{}};
+const A={code:null,S:null,me:null,mode:"local",db:null,unsub:null,drafts:{},modal:null,drawer:false,sync:"idle",toast:null,flags:{},min:{},dis:{}};
 (function(){let id=null;try{id=localStorage.getItem("vh.id")}catch(e){}if(!id){id="p"+Math.random().toString(36).slice(2,10);try{localStorage.setItem("vh.id",id)}catch(e){}}A.me=id;
   try{A.drafts["j-name"]=localStorage.getItem("vh.name")||""}catch(e){}})();
 
@@ -515,7 +548,7 @@ const Net={
     }catch(e){console.error(e)}
     render()})();return this.ready},
   lkey:c=>"vh.room."+c,
-  fix(S){if(!S)return null;["log","hand","deck","discard"].forEach(k=>{S[k]=S[k]||[]});S.nkjv=S.nkjv||{};S.players=S.players||{};S.abilityLock=S.abilityLock||{};
+  fix(S){if(!S)return null;["log","hand","deck","discard"].forEach(k=>{S[k]=S[k]||[]});S.nkjv=S.nkjv||{};S.players=S.players||{};S.abilityLock=S.abilityLock||{};S.spent=S.spent||{};S.blocked=S.blocked||{};
     S.pending=S.pending||null;S.challenge=S.challenge||null;S.falseLead=S.falseLead||null;S.handLimit=S.handLimit||HAND_LIMIT;
     if(S.falseLead){S.falseLead.decoys=S.falseLead.decoys||[];S.falseLead.options=S.falseLead.options||[]}return S},
   async get(code){
@@ -601,7 +634,7 @@ function landing(){
   <section class="card"><h2>Play solo</h2><p class="hint">You are the Hunter. The Computer hides a verse, answers your investigations, draws cards and plays Hider cards against you. 45 minute limit.</p>
    <button class="btn" data-act="solo">Play solo against the Computer</button></section>
   <section class="card"><h2>How a round works</h2>
-   <p>The Hider secretly picks a verse and holds a hand of up to 6 tactical cards. Hunters investigate as often as they like, with no points to spend. Each time the Hider answers an investigation, the Hider draws cards. Hunters win by naming the exact book, chapter and verse. The Hider wins when the round timer runs out.</p>
+   <p>The Hider secretly picks a verse and holds a hand of up to 6 tactical cards. Hunters can ask each question once per round (a blocked question can be asked again after another one is answered). Each time the Hider answers an investigation, the Hider draws cards. Hunters win by naming the exact book, chapter and verse. The Hider wins when the round timer runs out.</p>
    <p class="hint">${A.mode==="cloud"?"Rooms sync live across devices.":"Firebase is not set up yet, so rooms only sync between tabs of this browser. See the README."}</p></section>`;
 }
 function pairingCard(S){
@@ -675,33 +708,52 @@ function statsHtml(S,now,role){
   ${mine?`<div class="stat"><span class="l">Deck / discard</span><span class="v">${S.deck.length} / ${S.discard.length}</span></div>`:""}
   ${S.endsAt?`<div class="stat"><span class="l">Time left</span><span class="v" data-cd="${S.endsAt}">${fmt(S.endsAt-now)}</span></div>`:""}</div>`;
 }
+function cols(left,mid,role){
+  const S=view();
+  return `<div class="cols"><aside class="side">${left}</aside><main class="mid">${mid}</main><aside class="side logcol"><section class="card"><h2>Event log</h2><div class="log">${logHtml(S,role)}</div></section></aside></div>`;
+}
+function popups(S,now,role){
+  const clues=S.log.filter(e=>e.kind==="clue");
+  if(A.popFor!==S.code){A.popFor=S.code;A.dis={};A.min={};clues.forEach(e=>{A.dis[e.id]=1})}
+  let out="";const p=S.pending;
+  if(p){
+    const pa=HUNTER_ABILITIES.find(a=>a.k===p.k),key="p"+p.k+p.expiresAt;
+    const title=pa.name+(p.k==="proximity"||p.k==="term"?" • "+p.input:"")+(p.rerolled?" (rerolled)":"");
+    if(A.min[key])out+=`<button class="chip" data-act="pop-open" data-key="${key}">Question waiting: ${esc(title)} · open</button>`;
+    else{
+      const need=needDiscard(S),ext=p.k==="extract";
+      const body=role==="hider"
+        ?`<p class="hint">${ext?"Tap a highlighted word in your Secret Verse to send it, or send the default word. ":""}Answering draws ${pa.draw} card${pa.draw>1?"s":""}. It auto-answers in <span class="mono" data-cd="${p.expiresAt}">${fmt(p.expiresAt-now)}</span> with no cards drawn. Play Inquiry Override or Scan Reroll first if you hold them.${need?" Discard down to your hand limit first.":""}</p>
+          <div class="row">${ext?`<button class="btn sm" data-act="send-default" ${need?"disabled":""}>Send default word</button>`:`<button class="btn sm" data-act="h-answer" ${need?"disabled":""}>Answer</button>`}</div>`
+        :`<p class="hint">Waiting for the Hider. They answer within <span class="mono" data-cd="${p.expiresAt}">${fmt(p.expiresAt-now)}</span>. A Hider card may change or block the result.</p>`;
+      out+=`<div class="pop" role="dialog" aria-label="Question"><div class="row head"><div><div class="hint">QUESTION</div><div class="big">${esc(title)}</div></div><button class="btn ghost sm" data-act="pop-min" data-key="${key}">Minimize</button></div>${body}</div>`;
+    }
+  }
+  const c=clues.find(e=>!A.dis[e.id]);
+  if(c)out+=`<div class="pop" role="dialog" aria-label="Answer"><div class="row head"><div><div class="hint">ANSWER</div><div class="big">${esc(c.title)}</div></div><button class="btn ghost sm" data-act="pop-dis" data-id="${c.id}">Minimize to log</button></div><p>${esc(c.text)}</p>${c.scrambled&&role==="hider"?`<span class="pill warn">scrambled</span>`:""}</div>`;
+  return out?`<div class="pops">${out}</div>`:"";
+}
 function hunterView(){
   const S=view(),now=Date.now(),lock=lockReason(S,now),off=now<S.offlineUntil;
-  const fl=S.falseLead&&!S.falseLead.cleared,ch=S.challenge,p=S.pending;
+  const fl=S.falseLead&&!S.falseLead.cleared,ch=S.challenge;
   const cards=HUNTER_ABILITIES.map(ab=>{
-    const al=(S.abilityLock[ab.k]||0)>now;
-    const blocked=lock||al||(ab.precision&&fl);
-    const input=ab.input==="book"?`<select id="in-prox" aria-label="Book to ping">${`<option value="">Choose a book</option>`+bookOptions(dv("in-prox"))}</select>`
-      :ab.input==="word"?`<input id="in-term" placeholder="One word" value="${esc(dv("in-term"))}" maxlength="30" autocapitalize="none">`:"";
-    return `<div class="ab"><div class="h"><span class="n">${esc(ab.name)}</span><span class="cost">Hider draws ${ab.draw}</span></div><p>${esc(ab.d)}</p>${input}
-      <button class="btn sm" data-act="use" data-k="${ab.k}" ${blocked?"disabled":""}>${al?"Locked "+fmt(S.abilityLock[ab.k]-now):"Run"}</button></div>`}).join("");
+    const qs=qState(S,ab.k),blocked=lock||qs!=="ok"||(ab.precision&&fl);
+    const tag=qs==="used"?`<span class="pill">Asked</span>`:qs==="blocked"?`<span class="pill warn">Blocked</span>`:`<span class="draw" tabindex="0" role="note" aria-label="Hider draws ${ab.draw} card${ab.draw>1?"s":""} when answering" data-tip="The Hider draws ${ab.draw} card${ab.draw>1?"s":""} when they answer this question. Bigger questions give the Hider more.">${"<i class=\"mc\"></i>".repeat(ab.draw)}<b>+${ab.draw}</b></span>`;
+    const note=qs==="blocked"?`<p class="hint">Blocked by the Hider. Get a different question answered, then ask this one again.</p>`:"";
+    return `<div class="ab${qs==="used"?" used":""}"><div class="h"><span class="n"><span class="ic" aria-hidden="true">${IC[ab.k]}</span>${esc(ab.name)}</span></div><p>${esc(ab.d)}</p>${note}
+      <div class="ft">${tag}<button class="btn sm" data-act="use" data-k="${ab.k}" ${blocked?"disabled":""}>${qs==="used"?"Asked":qs==="blocked"?"Blocked":ab.input?"Ask…":"Ask"}</button></div></div>`}).join("");
   const banners=[];
-  if(S.cooldownUntil>now)banners.push(`<div class="banner bad"><strong>Cooldown</strong><span>No guesses or investigations for <span class="mono" data-cd="${S.cooldownUntil}">${fmt(S.cooldownUntil-now)}</span>.</span></div>`);
-  if(p){const pa=HUNTER_ABILITIES.find(a=>a.k===p.k);banners.push(`<div class="banner"><strong>Waiting for the Hider: ${esc(pa.name)}</strong><span>The Hider answers within <span class="mono" data-cd="${p.expiresAt}">${fmt(p.expiresAt-now)}</span>. A Hider card may change or block the result.</span></div>`)}
-  if(ch)banners.push(`<div class="banner"><strong>${esc(CH_LABEL[ch.type])}: ${esc(ch.choice)}</strong><span>${esc(CH_ASK[ch.type])} Investigations are paused until you clear it, or after <span class="mono" data-cd="${ch.expiresAt}">${fmt(ch.expiresAt-now)}</span>.</span>
+  if(S.cooldownUntil>now)banners.push(`<div class="banner bad"><strong>Cooldown</strong><span>No guesses or questions for <span class="mono" data-cd="${S.cooldownUntil}">${fmt(S.cooldownUntil-now)}</span>.</span></div>`);
+  if(ch)banners.push(`<div class="banner"><strong>${esc(CH_LABEL[ch.type])}: ${esc(ch.choice)}</strong><span>${esc(CH_ASK[ch.type])} Questions are paused until you clear it, or after <span class="mono" data-cd="${ch.expiresAt}">${fmt(ch.expiresAt-now)}</span>.</span>
     <div class="row"><input id="ch-ans" placeholder="e.g. Genesis 8:11" value="${esc(dv("ch-ans"))}"><button class="btn sm" data-act="ch-submit">Submit reference</button></div></div>`);
   if(fl&&S.falseLead.pending)banners.push(`<div class="banner"><strong>False Lead incoming: Term Sweep and Sector Lock blocked</strong><span>The Hider is choosing decoys. They arrive within <span class="mono" data-cd="${S.falseLead.expiresAt}">${fmt(S.falseLead.expiresAt-now)}</span>.</span></div>`);
   else if(fl)banners.push(`<div class="banner"><strong>False Lead: Term Sweep and Sector Lock blocked</strong><span>Three candidate verses were sent in. Two are decoys. Rule one out to unlock them. A wrong pick locks this for 1 minute.</span>
     <div class="row">${S.falseLead.options.map((o,i)=>`<button class="btn ghost sm" data-act="decoy" data-i="${i}">Rule out ${esc(o.book+" "+o.ch+":"+o.v)}</button>`).join("")}</div></div>`);
-  if(off)banners.push(`<div class="banner bad"><strong>Offline Protocol</strong><span>Verse and keyword helper tools are locked for <span class="mono" data-cd="${S.offlineUntil}">${fmt(S.offlineUntil-now)}</span>.</span></div>`);
-  return header()+`<section class="card hot">${statsHtml(S,now,"hunter")}</section>${banners.join("")}
-  <div class="split"><section class="card"><h2>Recon deck</h2><p class="hint">No limits on how often you investigate, apart from the locks and cooldowns above.</p><div class="grid">${cards}</div></section>
-  <div style="display:flex;flex-direction:column;gap:16px;min-width:0"><section class="card"><h2>Clue log</h2><div class="log">${logHtml(S,"hunter")}</div></section>
-  <section class="card"><h2>Field tools</h2>${off?`<p class="hint">Locked by the Hider.</p>`:`
-    <label>Verse lookup<div class="row"><select id="lk-book"><option value="">Book</option>${bookOptions(dv("lk-book"))}</select><input id="lk-c" inputmode="numeric" size="3" placeholder="Ch" value="${esc(dv("lk-c"))}"><input id="lk-v" inputmode="numeric" size="3" placeholder="V" value="${esc(dv("lk-v"))}"><button class="btn sm" data-act="lookup">Look up</button></div></label>
-    <label>Keyword search<div class="row"><input id="kw" placeholder="word" value="${esc(dv("kw"))}"><button class="btn sm" data-act="kwsearch">Search</button></div></label>
-    <div id="tool-out" class="hint">${esc(A.flags.toolOut||"Searches the built-in verse set.")}</div>`}</section></div></div>
-  <div class="row"><button class="btn" data-act="drawer">Final Guess</button></div>`;
+  if(off)banners.push(`<div class="banner bad"><strong>Offline Protocol</strong><span>Bibles away: no looking up verses or searching for <span class="mono" data-cd="${S.offlineUntil}">${fmt(S.offlineUntil-now)}</span>.</span></div>`);
+  const left=`<section class="card hot">${statsHtml(S,now,"hunter")}</section>
+   <section class="card"><button class="btn" data-act="drawer" ${S.status!=="playing"?"disabled":""}>Final Guess</button><p class="hint">Exact book, chapter and verse wins.</p></section>`;
+  const mid=`${banners.join("")}<section class="card"><h2>Recon deck</h2><p class="hint">Each question can be asked once per round. If the Hider blocks one, you can ask it again after a different question is answered. The <span class="draw" style="padding:1px 7px;cursor:default"><i class="mc"></i><b>+1</b></span> badge shows how many cards the Hider draws for answering.</p><div class="grid">${cards}</div></section>`;
+  return header()+cols(left,mid,"hunter");
 }
 function optSel(id,vals,labelFn){return `<select id="ch-${id}" aria-label="Choose">${`<option value="">Choose</option>`+vals.map(v=>`<option value="${esc(v)}"${dv("ch-"+id)===v?" selected":""}>${esc(labelFn?labelFn(v):v)}</option>`).join("")}</select>`}
 function handHtml(S,now,need){
@@ -711,39 +763,38 @@ function handHtml(S,now,need){
     const marked=S.hand.filter(h=>h.id!==c.id&&sel[h.id]).length;
     let extra="",why="";
     if(c.k==="fauna"||c.k==="symbol"||c.k==="era"){extra=optSel(c.id,Object.keys(CH_POOL[c.k]));if(S.challenge)why="A challenge is already active."}
-    if(c.k==="reroll"){const o=S.pending?rerollOptions(S.pending.k):[];extra=optSel(c.id,o,k=>HUNTER_ABILITIES.find(a=>a.k===k).name);if(!S.pending)why="Needs a waiting investigation.";else if(!o.length)why="No other investigation in this tier."}
+    if(c.k==="reroll"){const o=S.pending?rerollOptions(S.pending.k,S):[];extra=optSel(c.id,o,k=>HUNTER_ABILITIES.find(a=>a.k===k).name);if(!S.pending)why="Needs a waiting investigation.";else if(!o.length)why="No other investigation in this tier."}
     if(c.k==="override"&&!S.pending)why="Needs a waiting investigation.";
     if(c.k==="scramble"&&S.scrambleArmed)why="Already armed.";
     if(c.k==="offline"&&now<S.offlineUntil)why="Already active.";
     if(c.k==="falselead"&&S.falseLead&&!S.falseLead.cleared)why="A False Lead is already active.";
     if(c.k==="shift"&&S.shifted>=1)why="Already used this round.";
     const off=!playing||need>0||marked!==d.cost||!!why;
-    return `<div class="ab${sel[c.id]?" sel":""}"><div class="h"><span class="n">${esc(d.name)}</span><span class="cost">${d.cost?"Discard "+d.cost:"No discard"}</span></div><p>${esc(d.d)}</p>${extra}
-      <div class="row"><button class="btn sm" data-act="h-play" data-id="${c.id}" ${off?"disabled":""}>Play</button>
-      <label class="chk"><input type="checkbox" data-mark="${c.id}" ${sel[c.id]?"checked":""}> Mark</label></div>${why?`<p class="hint">${esc(why)}</p>`:d.cost&&marked!==d.cost?`<p class="hint">Mark ${d.cost} other card${d.cost>1?"s":""} to pay the cost.</p>`:""}</div>`}).join("");
+    const hint=why?`<p class="hint">${esc(why)}</p>`:d.cost&&marked!==d.cost?`<p class="hint">Mark ${d.cost} other card${d.cost>1?"s":""} to pay the cost.</p>`:"";
+    return `<div class="ab${sel[c.id]?" sel":""}"><div class="h"><span class="n"><span class="ic" aria-hidden="true">${IC[c.k]}</span>${esc(d.name)}</span></div><p>${esc(d.d)}</p>${hint}
+      <div class="ft"><span class="cost">${d.cost?"Discard "+d.cost:"No discard"}</span><label class="chk"><input type="checkbox" data-mark="${c.id}" ${sel[c.id]?"checked":""}> Mark</label><button class="btn sm" data-act="h-play" data-id="${c.id}" ${off?"disabled":""}>${["fauna","symbol","era","reroll"].includes(c.k)?"Play…":"Play"}</button></div></div>`}).join("");
 }
 function hiderView(){
-  const S=view(),now=Date.now(),v=S.verse,need=needDiscard(S),p=S.pending,pa=p&&HUNTER_ABILITIES.find(a=>a.k===p.k);
+  const S=view(),now=Date.now(),v=S.verse,need=needDiscard(S),p=S.pending;
   const sel=A.flags.dsel||{};
   const ext=p&&p.k==="extract";
   const words=v.text.split(/\s+/).map(w=>{const t=tokens(w);const core=t.length?t.join("-"):"";const ok=core&&isEligible(core)&&eligibleWords(v.text).some(x=>x.toLowerCase()===core.toLowerCase());
     return ext&&ok?`<button class="w ok" data-act="send-word" data-w="${esc(core)}" ${need?"disabled":""}>${esc(w)}</button>`:`<span class="w${ok?" ok":""}" style="${ok?"cursor:default":""}">${esc(w)}</span>`}).join(" ");
   const decoyPick=[1,2].map(n=>`<input id="fl-d${n}" placeholder="Decoy ${n}, e.g. John 3:16 (blank = auto)" value="${esc(dv("fl-d"+n))}" aria-label="Decoy ${n}">`).join("");
   const hasShift=S.hand.some(c=>c.k==="shift")&&!S.shifted;
-  return header()+`<section class="card hot">${statsHtml(S,now,"hider")}</section>
-  ${need?`<div class="banner bad"><strong>Hand limit: discard ${need} card${need>1?"s":""}</strong><span>Mark ${need} card${need>1?"s":""} below, then discard. You cannot answer or play cards until you are at ${S.handLimit} or fewer.</span>
-    <div class="row"><button class="btn sm" data-act="h-discard">Discard marked (${S.hand.filter(c=>sel[c.id]).length} / ${need})</button></div></div>`:""}
-  ${p?`<div class="banner"><strong>Investigation waiting: ${esc(pa.name)}${p.k==="proximity"||p.k==="term"?" • "+esc(p.input):""}${p.rerolled?" (rerolled)":""}</strong><span>${ext?"Tap a highlighted word in your verse to send it, or send the default word. ":""}Answering draws ${pa.draw} card${pa.draw>1?"s":""}. It auto-answers in <span class="mono" data-cd="${p.expiresAt}">${fmt(p.expiresAt-now)}</span> with no cards drawn. Play Inquiry Override or Scan Reroll first if you hold them.</span>
-    <div class="row">${ext?`<button class="btn sm" data-act="send-default" ${need?"disabled":""}>Send default word</button>`:`<button class="btn sm" data-act="h-answer" ${need?"disabled":""}>Answer</button>`}</div></div>`:""}
+  const left=`<section class="card hot">${statsHtml(S,now,"hider")}</section>
   <section class="card hot"><h2>Secret verse</h2><div class="verse">${ext?words:esc(v.text)}<div class="hint mono">${esc(refStr(v))} · ${esc(v.src)}</div></div>
-   ${S.falseLead&&S.falseLead.pending?`<div class="banner"><strong>False Lead: choose your decoys</strong><span>Name two decoy verses, or let the app pick. Auto-pick in <span class="mono" data-cd="${S.falseLead.expiresAt}">${fmt(S.falseLead.expiresAt-now)}</span>.</span>
-     <div class="row">${decoyPick}</div><div class="row"><button class="btn sm" data-act="fl-send">Send decoys</button><button class="btn ghost sm" data-act="fl-auto">Auto-pick</button></div></div>`:""}
+   ${ext?`<p class="hint">Question waiting: tap a highlighted word to send it.</p>`:""}
    ${S.challenge?`<p class="hint"><span class="pill warn">active</span> ${esc(CH_LABEL[S.challenge.type])}: ${esc(S.challenge.choice)}. Hunters must clear it (<span class="mono" data-cd="${S.challenge.expiresAt}">${fmt(S.challenge.expiresAt-now)}</span> at most).</p>`:""}
    ${S.scrambleArmed?`<p class="hint"><span class="pill warn">armed</span> Signal Scramble will corrupt the next scan result.</p>`:""}
-   ${now<S.offlineUntil?`<p class="hint"><span class="pill warn">active</span> Offline Protocol ends in <span class="mono" data-cd="${S.offlineUntil}">${fmt(S.offlineUntil-now)}</span>.</p>`:""}</section>
-  <div class="split"><section class="card"><h2>Your hand</h2><p class="hint">Mark cards to pay a play cost or to discard. Hand limit ${S.handLimit}.</p><div class="grid">${S.hand.length?handHtml(S,now,need):`<p class="hint">Your hand is empty. Answer an investigation to draw cards.</p>`}</div>
-   ${hasShift?`<details ${dv("sh-ct")||dv("sh-cc")?"open":""}><summary class="hint" style="cursor:pointer">Position Shift: new verse in ${esc(v.book)}</summary>${versePicker("sh",v.book)}</details>`:""}</section>
-  <div style="display:flex;flex-direction:column;gap:16px;min-width:0"><section class="card"><h2>Hunter activity</h2><div class="log">${logHtml(S,"hider")}</div></section></div></div>`;
+   ${now<S.offlineUntil?`<p class="hint"><span class="pill warn">active</span> Offline Protocol ends in <span class="mono" data-cd="${S.offlineUntil}">${fmt(S.offlineUntil-now)}</span>.</p>`:""}</section>`;
+  const mid=`${need?`<div class="banner bad"><strong>Hand limit: discard ${need} card${need>1?"s":""}</strong><span>Mark ${need} card${need>1?"s":""} below, then discard. You cannot answer or play cards until you are at ${S.handLimit} or fewer.</span>
+    <div class="row"><button class="btn sm" data-act="h-discard">Discard marked (${S.hand.filter(c=>sel[c.id]).length} / ${need})</button></div></div>`:""}
+  ${S.falseLead&&S.falseLead.pending?`<div class="banner"><strong>False Lead: choose your decoys</strong><span>Name two decoy verses, or let the app pick. Auto-pick in <span class="mono" data-cd="${S.falseLead.expiresAt}">${fmt(S.falseLead.expiresAt-now)}</span>.</span>
+     <div class="row">${decoyPick}</div><div class="row"><button class="btn sm" data-act="fl-send">Send decoys</button><button class="btn ghost sm" data-act="fl-auto">Auto-pick</button></div></div>`:""}
+  <section class="card"><h2>Your cards</h2><p class="hint">Mark cards to pay a play cost or to discard. Hand limit ${S.handLimit}.</p><div class="grid">${S.hand.length?handHtml(S,now,need):`<p class="hint">Your hand is empty. Answer a question to draw cards.</p>`}</div>
+   ${hasShift?`<details ${dv("sh-ct")||dv("sh-cc")?"open":""}><summary class="hint" style="cursor:pointer">Position Shift: new verse in ${esc(v.book)}</summary>${versePicker("sh",v.book)}</details>`:""}</section>`;
+  return header()+cols(left,mid,"hider");
 }
 function ended(){
   const S=A.S,hw=S.winner==="hunters";
@@ -759,7 +810,20 @@ function drawer(){
   <label>Chapter<input id="g-c" inputmode="numeric" size="4" value="${esc(dv("g-c"))}"></label><label>Verse<input id="g-v" inputmode="numeric" size="4" value="${esc(dv("g-v"))}"></label></div>
   <div class="row"><button class="btn bad" data-act="guess" ${S.status!=="playing"||Date.now()<S.cooldownUntil?"disabled":""}>Submit guess</button></div></div></div>`;
 }
+function choiceCard(){
+  const S=A.S,c=A.choice;let title,desc,body,go;
+  if(c.k){const ab=HUNTER_ABILITIES.find(a=>a.k===c.k);title=ab.name;desc=ab.d;
+    body=ab.input==="book"?`<label>Book<select id="in-prox"><option value="">Choose a book</option>${bookOptions(dv("in-prox"))}</select></label>`
+      :`<label>Word<input id="in-term" placeholder="One word" value="${esc(dv("in-term"))}" maxlength="30" autocapitalize="none"></label>`;
+    go=`<button class="btn" data-act="use" data-k="${c.k}" data-go="1">Ask</button>`}
+  else{const card=S.hand.find(x=>x.id===c.card);if(!card)return"";const d=CARDS.find(x=>x.k===card.k);title=d.name;desc=d.d;
+    const opts=card.k==="reroll"?(S.pending?rerollOptions(S.pending.k,S):[]).map(k=>[k,HUNTER_ABILITIES.find(a=>a.k===k).name]):Object.keys(CH_POOL[card.k]).map(k=>[k,k]);
+    body=`<label>${card.k==="reroll"?"Replacement question":"Choose one"}<select id="ch-${card.id}"><option value="">Choose</option>${opts.map(([k,l])=>`<option value="${esc(k)}"${dv("ch-"+card.id)===k?" selected":""}>${esc(l)}</option>`).join("")}</select></label>`;
+    go=`<button class="btn" data-act="h-play" data-id="${card.id}" data-go="1">Play</button>`}
+  return `<div class="modal" data-act="close-modal-bg"><div class="card"><h2>${esc(title)}</h2><p class="hint">${esc(desc)}</p>${body}<div class="row">${go}<button class="btn ghost" data-act="close-modal">Cancel</button></div></div></div>`;
+}
 function modal(){
+  if(A.choice&&A.S&&A.S.status==="playing")return choiceCard();
   if(A.modal==="settings")return settingsCard();
   if(A.modal==="pair"&&A.S)return `<div class="modal" data-act="close-modal-bg"><div class="card"><div class="row" style="justify-content:space-between"><h2>Pair a device</h2><button class="btn ghost sm" data-act="close-modal">Close</button></div>${pairingCard(A.S)}</div></div>`;
   return"";
@@ -784,8 +848,9 @@ function settingsCard(){
 /* ---------- render ---------- */
 function render(){
   const ae=document.activeElement;const fid=ae&&ae.id,fs=ae&&ae.selectionStart,fe=ae&&ae.selectionEnd;
-  const y=window.scrollY;
+  const y=window.scrollY,sc=[...document.querySelectorAll(".side")].map(e=>e.scrollTop);
   const S=A.S;let html;
+  $app.className="wrap"+(S&&S.players[A.me]&&S.status==="playing"?" game":"");
   document.body.dataset.role=myRole()||"hunter";
   if(!S||!S.players[A.me])html=landing();
   else if(S.status==="lobby")html=lobby();
@@ -794,11 +859,13 @@ function render(){
   let layer=modal();
   if(S&&S.status==="ended")layer+=ended();
   if(S&&A.drawer&&myRole()==="hunter"&&S.status==="playing")layer+=drawer();
+  if(S&&S.status==="playing"&&S.players[A.me])layer+=popups(S,Date.now(),myRole());
   $layer.innerHTML=layer;
   const qr=document.getElementById("qr");
   if(qr&&S&&window.QRCode){try{new QRCode(qr,{text:joinUrl(S.code),width:168,height:168,colorDark:"#000000",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M})}catch(e){}}
   if(fid){const el=document.getElementById(fid);if(el){el.focus();try{if(fs!=null)el.setSelectionRange(fs,fe)}catch(e){}}}
   window.scrollTo(0,y);
+  document.querySelectorAll(".side").forEach((e,i)=>{if(sc[i])e.scrollTop=sc[i]});
 }
 document.addEventListener("input",e=>{const t=e.target;if(t.id)A.drafts[t.id]=t.value;if(t.id&&/-ct$/.test(t.id)){delete A.drafts[t.id.replace(/-ct$/,"-src")]}if(t.id==="j-name"||t.id==="h-name"){try{localStorage.setItem("vh.name",t.value)}catch(x){}}});
 document.addEventListener("change",e=>{const t=e.target;if(t.dataset&&t.dataset.mark){A.flags.dsel=A.flags.dsel||{};A.flags.dsel[t.dataset.mark]=t.checked;render();return}if(t.id)A.drafts[t.id]=t.value;if(t.id==="st-theme")applyTheme(t.value);
@@ -830,10 +897,13 @@ const H={
       if(A.S&&A.S.players[A.me])act(S=>{if(S.players[A.me])S.players[A.me].name=name})}
     A.modal=null;render();toast("Settings saved.")},
   "st-copy"(){const t="crosscodeministry@gmail.com";(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast("Email copied."),()=>toast(t))},
-  pair(){A.modal="pair";render()},"close-modal"(){A.modal=null;render()},
+  pair(){A.modal="pair";render()},"close-modal"(){A.modal=null;A.choice=null;render()},
   "copy-link"(){const el=document.getElementById("join-url");const t=el.value;
     (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast("Link copied."),()=>{el.select();toast("Press copy on the selected link.")})},
   drawer(){A.drawer=!A.drawer;render()},
+  "pop-min"(b){A.min[b.dataset.key]=1;render()},
+  "pop-open"(b){delete A.min[b.dataset.key];render()},
+  "pop-dis"(b){A.dis[b.dataset.id]=1;render()},
   "set-verse"(){try{const v=readPick("lv");act(S=>{if(S.status!=="lobby")throw GE("Round already started.");S.verse=v})}catch(e){toast(e.message)}},
   "import-nkjv"(){const lines=(dv("nkjv-in")||"").split("\n");let n=0;const add={};
     for(const l of lines){const m=l.match(/^\s*([^|]+)\|(\d+)\|(\d+)\|(.+)$/);if(m&&BOOK(m[1].trim())){add[m[1].trim()+"|"+m[2]+"|"+m[3]]=m[4].trim();n++}}
@@ -846,11 +916,11 @@ const H={
     try{await Net.put(S)}catch(e){toast("Could not start a solo game.");return}
     A.S=S;A.code=code;A.flags.dsel={};Net.sub(code,onRemote);render()},
   start(){const tl=parseInt(dv("tl-sel","60"),10)||0;act((S,now)=>{if(S.hostId!==A.me)throw GE("Only the host can start.");if(!hiderId(S)||!S.verse)throw GE("The Hider needs a locked verse.");if(!hunterIds(S).length)throw GE("Need at least one Hunter.");
-    Object.assign(S,{status:"playing",hand:[],deck:buildDeck(),discard:[],handLimit:HAND_LIMIT,pending:null,challenge:null,abilityLock:{},ruleLock:0,endsAt:tl>0?now+tl*60000:0,cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,falseLead:null,log:[],winner:null,reason:""});
+    Object.assign(S,{status:"playing",hand:[],deck:buildDeck(),discard:[],handLimit:HAND_LIMIT,pending:null,challenge:null,abilityLock:{},spent:{},blocked:{},qCount:0,ruleLock:0,endsAt:tl>0?now+tl*60000:0,cooldownUntil:0,offlineUntil:0,scrambleArmed:false,shifted:0,falseLead:null,log:[],winner:null,reason:""});
     drawCards(S,START_HAND);A.flags.dsel={};
     addLog(S,{kind:"event",tag:"meta",title:"Round started",text:"The Hider holds "+START_HAND+" cards (limit "+HAND_LIMIT+")."+(tl>0?" Time limit: "+tl+" minutes.":"")})})},
-  again(){act((S,now)=>{if(S.hostId!==A.me)throw GE("Only the host can reset.");if(S.solo){soloStart(S,now);A.flags.dsel={};return}Object.assign(S,{status:"lobby",verse:null,log:[],winner:null,reason:"",pending:null,challenge:null,falseLead:null,scrambleArmed:false,shifted:0,cooldownUntil:0,offlineUntil:0,hand:[],deck:[],discard:[],abilityLock:{},ruleLock:0,endsAt:0});A.flags.dsel={}})},
-  use(b){const k=b.dataset.k;const ab=HUNTER_ABILITIES.find(a=>a.k===k);const input=ab.input==="book"?dv("in-prox"):ab.input==="word"?dv("in-term"):null;act((S,now)=>hunterUse(S,now,k,input))},
+  again(){act((S,now)=>{if(S.hostId!==A.me)throw GE("Only the host can reset.");if(S.solo){soloStart(S,now);A.flags.dsel={};return}Object.assign(S,{status:"lobby",verse:null,log:[],winner:null,reason:"",pending:null,challenge:null,falseLead:null,scrambleArmed:false,shifted:0,cooldownUntil:0,offlineUntil:0,hand:[],deck:[],discard:[],abilityLock:{},spent:{},blocked:{},qCount:0,ruleLock:0,endsAt:0});A.flags.dsel={}})},
+  use(b){const k=b.dataset.k;const ab=HUNTER_ABILITIES.find(a=>a.k===k);if(ab.input&&!b.dataset.go){A.choice={k};render();return}const input=ab.input==="book"?dv("in-prox"):ab.input==="word"?dv("in-term"):null;act((S,now)=>{hunterUse(S,now,k,input);A.choice=null})},
   guess(){const b=dv("g-book"),c=dv("g-c"),v=dv("g-v");act((S,now)=>{hunterGuess(S,now,b,c,v);A.drawer=false})},
   decoy(b){const i=+b.dataset.i;act((S,now)=>{const fl=S.falseLead;if(!fl||fl.cleared||fl.pending)return;
     if(now<(S.ruleLock||0))throw GE("Wait "+fmt(S.ruleLock-now)+" before ruling out another.");
@@ -886,10 +956,11 @@ const H={
   "send-default"(){act((S,now)=>{guardHand(S);answerPending(S,now,false,null)})},
   "h-answer"(){act((S,now)=>{guardHand(S);if(!S.pending)return;if(S.pending.k==="extract")throw GE("Tap a highlighted word to send it, or send the default word.");answerPending(S,now,false)})},
   "h-play"(b){const id=b.dataset.id,S0=A.S,c=S0.hand.find(x=>x.id===id);if(!c)return;
+    if(["fauna","symbol","era","reroll"].includes(c.k)&&!b.dataset.go){A.choice={card:id};render();return}
     const sel=A.flags.dsel||{};const cost=Object.keys(sel).filter(x=>sel[x]&&x!==id&&S0.hand.some(h=>h.id===x));
     let opt=dv("ch-"+id);
     if(c.k==="shift"){try{opt=readPick("sh",S0.verse.book)}catch(e){toast(e.message);return}}
-    act((S,now)=>{playCard(S,now,id,opt,cost);A.flags.dsel={};if(c.k==="shift"){["sh-cc","sh-cv","sh-ct","sh-src"].forEach(k=>delete A.drafts[k])}})},
+    act((S,now)=>{playCard(S,now,id,opt,cost);A.choice=null;A.flags.dsel={};if(c.k==="shift"){["sh-cc","sh-cv","sh-ct","sh-src"].forEach(k=>delete A.drafts[k])}})},
   "h-discard"(){act(S=>{const n=needDiscard(S);if(n<=0)return;const sel=A.flags.dsel||{};const ids=S.hand.filter(c=>sel[c.id]).map(c=>c.id);
     if(ids.length!==n)throw GE("Mark exactly "+n+" card"+(n>1?"s":"")+" to discard.");discardCards(S,ids);A.flags.dsel={}})},
   "fl-send"(){const raw=[1,2].map(n=>(dv("fl-d"+n)||"").trim()).filter(Boolean);const typed=raw.map(parseRef);
