@@ -5,7 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>Verse Hunt</title>
+<meta name="generator" content="N0607K0410">
 <meta name="author" content="CrossCode Ministry">
+<meta name="copyright" content="© 2026 CrossCode Ministry. All rights reserved.">
+<meta name="contact" content="crosscodeministry@gmail.com">
 <!-- © 2026 CrossCode Ministry. All rights reserved. crosscodeministry@gmail.com -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -14,6 +17,7 @@
 body{margin:0} img{max-width:100%} [hidden]{display:none!important}
 </style>
 <style>
+/* © 2026 CrossCode Ministry. All rights reserved. crosscodeministry@gmail.com */
 /* Layout: one column command console. Header strip (name, badges, room), role-colored deck, clue log. Hunters run cobalt, the Hider runs amber. */
 :root{
   --bg:#eef1f4; --surface:#ffffff; --surface2:#e4e9ee; --ink:#0f1a24; --mute:#526070; --line:#c3ccd6;
@@ -141,6 +145,11 @@ label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--m
 <script src="firebase-config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
+/* Verse Hunt | © 2026 CrossCode Ministry. All rights reserved. | crosscodeministry@gmail.com
+   Unauthorized copying, redistribution or resale of this code is prohibited. */
+const _fp=['N0','607','K04','10'].join('');
+const OWNER=Object.freeze({name:"CrossCode Ministry",contact:"crosscodeministry@gmail.com",year:2026,fp:_fp});
+try{console.info("Verse Hunt \u00a9 "+OWNER.year+" "+OWNER.name+" \u00b7 "+OWNER.contact)}catch(e){}
 //#LOGIC-START
 const BOOK_ROWS=`Genesis|50|Law (Pentateuch)|Moses
 Exodus|40|Law (Pentateuch)|Moses
@@ -854,7 +863,7 @@ function modal(){
   return"";
 }
 
-function footer(){return `<footer class="hint" style="text-align:center;padding:12px 0">\u00a9 2026 CrossCode Ministry. All rights reserved.<br><span class="mono">crosscodeministry@gmail.com</span></footer>`}
+function footer(){return `<footer class="hint" style="text-align:center;padding:16px 0;border-top:1.5px solid var(--line);margin-top:8px"><strong>Verse Hunt</strong> \u00b7 \u00a9 2026 CrossCode Ministry. All rights reserved.<br>Contact: <a class="mono" href="mailto:crosscodeministry@gmail.com" style="color:var(--role)">crosscodeministry@gmail.com</a></footer>`}
 function applyTheme(v){const r=document.documentElement;if(v==="dark"||v==="light")r.dataset.theme=v;else delete r.dataset.theme}
 function settingsCard(){
   const S=A.S,th=dv("st-theme",(()=>{try{return localStorage.getItem("vh.theme")||"auto"}catch(e){return"auto"}})());
@@ -869,7 +878,7 @@ function settingsCard(){
    <h3>About</h3>
    <p>Verse Hunt. Code created by CrossCode Ministry.</p>
    <p>\u00a9 2026 CrossCode Ministry. All rights reserved.</p>
-   <p class="hint">Contact: <span class="mono">crosscodeministry@gmail.com</span> <button class="btn ghost sm" data-act="st-copy">Copy</button></p></div></div>`;
+   <p class="hint">Contact: <a class="mono" href="mailto:crosscodeministry@gmail.com" style="color:var(--role)">crosscodeministry@gmail.com</a> <button class="btn ghost sm" data-act="st-copy">Copy</button></p></div></div>`;
 }
 /* ---------- render ---------- */
 function render(){
@@ -1043,6 +1052,7 @@ setInterval(()=>{
   });
 })();
 setInterval(()=>{try{if(A.code)localStorage.setItem("vh.last",A.code);else localStorage.removeItem("vh.last")}catch(e){}},2000);
+/* End of Verse Hunt. © 2026 CrossCode Ministry. All rights reserved. crosscodeministry@gmail.com */
 </script>
 </body>
 </html>
